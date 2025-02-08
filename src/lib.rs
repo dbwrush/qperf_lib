@@ -19,10 +19,10 @@ pub fn get_question_types() -> Vec<char> {
 }
 
 pub fn qperformance(question_sets_dir_path: &str, quiz_data_path: &str) -> Result<(Vec<String>, String), Box<dyn std::error::Error>> {
-    qperf(question_sets_dir_path, quiz_data_path, false, ['A', 'G', 'I', 'Q', 'R', 'S', 'X', 'V', 'M'].to_vec(), ",".to_string())
+    qperf(question_sets_dir_path, quiz_data_path, false, ['A', 'G', 'I', 'Q', 'R', 'S', 'X', 'V', 'M'].to_vec(), ",".to_string(), "".to_string())
 }
 
-pub fn qperf(question_sets_dir_path: &str, quiz_data_path: &str, verbose: bool, types: Vec<char>, delim: String) -> Result<(Vec<String>, String), Box<dyn std::error::Error>> {
+pub fn qperf(question_sets_dir_path: &str, quiz_data_path: &str, verbose: bool, types: Vec<char>, delim: String, tourn: String) -> Result<(Vec<String>, String), Box<dyn std::error::Error>> {
     let mut warns = Vec::new();
     
     // Validate the paths
@@ -98,7 +98,7 @@ pub fn qperf(question_sets_dir_path: &str, quiz_data_path: &str, verbose: bool, 
         Err(e) => eprintln!("Quiz data contains formatting error: {}", e),
     }
 
-    let records = filter_records(quiz_records);
+    let records = filter_records(quiz_records, tourn);
     if verbose {
         eprintln!("Found {} records", records.len());
     }
@@ -351,14 +351,20 @@ fn check_valid_round(round_teams: &mut Vec<String>, round_quizzers: &mut Vec<Str
     round_quizzers.clear();
 }
 
-fn filter_records(records: Vec<csv::StringRecord>) -> Vec<csv::StringRecord> {
+fn filter_records(records: Vec<csv::StringRecord>, tourn: String) -> Vec<csv::StringRecord> {
     let mut filtered_records = Vec::new();
     let event_codes = vec!["'TC'", "'TE'", "'BC'", "'BE'", "'TN'", "'QN'", "'RM'"]; // event type codes
 
     for record in records {
         // Split the record by commas to get the columns
         let columns: Vec<&str> = record.into_iter().collect();
-        // Check if the 5th column matches the round number and 11th column contains the event type codes
+
+        //skip rounds with different tournament name
+        if tourn != "" && tourn != *columns.get(1).unwrap() {
+            continue;
+        }
+
+        // Check if the 11th column contains the event type codes
         if columns.get(10).map_or(false, |v| event_codes.contains(&v)) {
             filtered_records.push(csv::StringRecord::from(columns));
         }
@@ -451,7 +457,7 @@ mod tests {
     // Test for `filter_records` function
     #[test]
     fn test_filter_records() {
-        let filtered = filter_records(read_csv_file("tests/quiz_data.csv").unwrap());
+        let filtered = filter_records(read_csv_file("tests/quiz_data.csv").unwrap(), "".to_string());
         let expected = read_csv_file("tests/filtered_quiz_data.csv").unwrap();
         // Validate filtering logic (replace with actual expectations)
         assert_eq!(filtered.len(), expected.len());
