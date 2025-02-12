@@ -392,25 +392,31 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                 }
                 //Deduct 10 points if EITHER we are on or after question 16, or this is the quizzer's 3rd incorrect answer.
                 //Incorrect answers are in .2, the third element of the tuple.
-                if question_number >= 15 || teams.iter().any(|t| t.active_quizzers.iter().any(|q| q.0 == *quizzer_name && q.2 == 2)) {
-                    if let Some(team) = teams.get_mut(team_number) {
-                        team.team_score -= 10;
-                        if verbose {
-                            eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number, quizzer_name, team.team_name);
+                if let Some(team) = teams.get_mut(team_number) {
+                    if let Some(quizzer) = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name) {
+                        quizzer.2 += 1;
+                        if quizzer.2 == 3 || question_number >= 16 {
+                            team.team_score -= 10;
+                            if verbose {
+                                eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number, quizzer_name, team.team_name);
+                            }
+                        } else {
+                            if verbose {
+                                eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. No penalty applied.", room_number, round_number, question_number, quizzer_name);
+                            }
                         }
                     } else {
-                        let new_team = TeamStat {
-                            team_name: "".to_string(),
-                            team_score: 0,
-                            active_quizzers: Vec::new(),
-                        };
-                        teams.push(new_team);
-                        warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
+                        let new_quizzer = (quizzer_name.to_string(), 0, 1);
+                        team.active_quizzers.push(new_quizzer);
                     }
                 } else {
-                    if verbose {
-                        eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. No penalty applied.", room_number, round_number, question_number, quizzer_name);
-                    }
+                    let new_team = TeamStat {
+                        team_name: "".to_string(),
+                        team_score: 0,
+                        active_quizzers: Vec::new(),
+                    };
+                    teams.push(new_team);
+                    warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
                 }
             }
             "'BC'" => {//Quizzer answered a bonus question correctly.
