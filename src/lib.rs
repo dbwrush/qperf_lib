@@ -398,7 +398,7 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                         if quizzer.2 == 3 || question_number >= 15 {
                             team.team_score -= 10;
                             if verbose {
-                                eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number, quizzer_name, team.team_name);
+                                eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
                             }
                         } else {
                             if verbose {
@@ -409,7 +409,7 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                         if question_number >= 15 {
                             team.team_score -= 10;
                             if verbose {
-                                eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number, quizzer_name, team.team_name);
+                                eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
                             }
                         } else if verbose {
                             eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. No penalty applied.", room_number, round_number, question_number + 1, quizzer_name);
@@ -476,6 +476,14 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                 }
             }
             _ => {}
+        }
+        if verbose {
+            //print state of current round for debugging.
+            //round number, room number, question number
+            eprintln!("Current Round: {} Room: {} Question: {}", round_number, room_number, question_number + 1);
+            //current team scores
+            eprintln!("Current Teams: {:?}", teams.iter().map(|t| t.team_name.clone()).collect::<Vec<String>>());
+            eprintln!("Current Scores: {:?}", teams.iter().map(|t| t.team_score).collect::<Vec<u32>>());
         }
     }
     if missing.len() > 0 {
