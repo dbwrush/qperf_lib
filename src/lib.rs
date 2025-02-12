@@ -360,12 +360,18 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                             team.team_score += 10;
                         }
                     }
+                    if verbose {
+                        eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question right. Added 20 points to team {}.", room_number, round_number, question_number, quizzer_name, team.team_name);
+                    }
                     //Check if at least 3 quizzers on this team have a .1 (second element of tuple, the u32) greater than 0
                     //AND that the current quizzer had a .1 over 1 (because this is their first correct question this round)
                     if team.active_quizzers.iter().filter(|q| q.1 > 0).count() >= 3 {
                         if let Some(quizzer) = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name) {
                             if quizzer.1 > 1 {
                                 team.team_score += 10;//Apply 3rd or 4th person bonus.
+                                if verbose {
+                                    eprintln!("[Team Scoring] 3rd/4th person bonus applied to team {}.", team.team_name);
+                                }
                             }
                         }
                     }
@@ -389,6 +395,9 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                 if question_number >= 15 || teams.iter().any(|t| t.active_quizzers.iter().any(|q| q.0 == *quizzer_name && q.2 == 2)) {
                     if let Some(team) = teams.get_mut(team_number) {
                         team.team_score -= 10;
+                        if verbose {
+                            eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number, quizzer_name, team.team_name);
+                        }
                     } else {
                         let new_team = TeamStat {
                             team_name: "".to_string(),
@@ -410,6 +419,9 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                 //Add bonus of 10 to team score. Make sure the quizzer is considered active.
                 if let Some(team) = teams.get_mut(team_number) {
                     team.team_score += 10;
+                    if verbose {
+                        eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a bonus right. Added 10 points to team {}.", room_number, round_number, question_number, quizzer_name, team.team_name);
+                    }
                 } else {
                     let new_team = TeamStat {
                         team_name: "".to_string(),
