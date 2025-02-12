@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 use std::io::{self};
-use std::fs;
+use std::{clone, fs};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -70,7 +70,11 @@ pub fn qperf(question_sets_path: &str, quiz_data_path: &str, verbose: bool, type
 
     update_arrays(&mut warns, records, &quizzer_names, question_types_by_round, &mut attempts, &mut correct_answers, &mut bonus_attempts, &mut bonus, verbose);
 
-    let result = build_individual_results(quizzer_names, attempts, correct_answers, bonus_attempts, bonus, types, delim, team_names);
+    let result = build_individual_results(quizzer_names, attempts, correct_answers, bonus_attempts, bonus, types, delim.clone(), team_names);
+
+    //append team results to result
+    let team_result = build_team_results(&mut warns, rounds, delim.clone());
+    let result = format!("{}\n{}", result, team_result);
 
     Ok((warns, result))
 }
