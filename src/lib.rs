@@ -73,7 +73,7 @@ pub fn qperf(question_sets_path: &str, quiz_data_path: &str, verbose: bool, type
     let result = build_individual_results(quizzer_names, attempts, correct_answers, bonus_attempts, bonus, types, delim.clone(), team_names);
 
     //append team results to result
-    let team_result = build_team_results(&mut warns, rounds, delim.clone());
+    let team_result = build_team_results(&mut warns, rounds, delim.clone(), verbose);
     let result = format!("{}\n{}", result, team_result);
 
     Ok((warns, result))
@@ -507,8 +507,12 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
     }
 }
 
-fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String) -> String {
+fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String, verbose: bool) -> String {
     let mut result = String::new();
+
+    if verbose {
+        eprintln!("Beginning to process {} rounds for team standing", rounds.len());
+    }
 
     // This function will both display the results of each individual round (showing room number, round number, team names, and scores)
     // And it will also display the final ranking
