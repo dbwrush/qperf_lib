@@ -164,11 +164,11 @@ fn get_records(data_paths: Vec<PathBuf>, verbose: bool, tourn: String, warns: &m
         }
     }
 
-    let records = filter_records(quiz_records, tourn);
+    let filtered_records = filter_records(quiz_records, tourn);
     if verbose {
-        eprintln!("Found {} records", records.len());
+        eprintln!("Found {} records", filtered_records.len());
     }
-    let (quizzer_names, team_names) = get_quizzer_names(records.clone(), verbose, warns);
+    let (quizzer_names, team_names, records) = get_quizzer_names(filtered_records.clone(), verbose, warns);
     if verbose {
         eprintln!("Quizzer Names: {:?}", quizzer_names);
         eprintln!("Team Names: {:?}", team_names);
@@ -569,7 +569,7 @@ fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String
     result
 }
 
-fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut Vec<String>) -> (Vec<String>, Vec<String>) {
+fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut Vec<String>) -> (Vec<String>, Vec<String>, Vec<csv::StringRecord>) {
     let mut current_team = String::new();
     let mut round_quizzers: Vec<String> = Vec::new();
     let mut round_teams: Vec<String> = Vec::new();
@@ -577,6 +577,9 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
     let mut confirmed_teams: Vec<String> = Vec::new();
     let mut action = false;
     let mut index = 0;
+
+    let mut confirmed_records: Vec<csv::StringRecord> = Vec::new();
+    let mut candidate_records: Vec<csv::StringRecord> = Vec::new();
 
     for record in records {
         /*
@@ -586,6 +589,8 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
         This can mean a quizzer's name appears in two teams (one from practice, one from the actual quiz).
         The below code is an attempt to remove practice team and quizzer names by only adding teams when they participate in 'action'
         */
+
+        candidate_records.push(record.clone());
 
         // Split the record by commas to get the columns
         let columns: Vec<&str> = record.into_iter().collect();
@@ -612,7 +617,11 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
         } else if ecode == &"'BC'" || ecode == &"'BE'" || ecode == &"'TC'" || ecode == &"'TE'" {//action has happened, teams present in this round can be confirmed.
             action = true;
         } else if ecode == &"'RM'" {//Indicates start of new round. Check if current teams can be confirmed.
-            check_valid_round(&mut round_teams, &mut round_quizzers, &mut confirmed_teams, &mut confirmed_quizzers, verbose, &mut action);
+            if check_valid_round(&mut round_teams, &mut round_quizzers, &mut confirmed_teams, &mut confirmed_quizzers, verbose, &mut action) {
+                //Copy candidate records to verified records
+                confirmed_records.append(&mut candidate_records);
+            }
+            candidate_records.clear();
         }
 
         index += 1;//shouldn't be needed, but for debugging why not have it?
@@ -623,10 +632,11 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
         eprintln!("Confirmed Quizzers: {:?}", confirmed_quizzers);
     }
 
-    (confirmed_quizzers, confirmed_teams)
+    (confirmed_quizzers, confirmed_teams, confirmed_records)
 }
 
-fn check_valid_round(round_teams: &mut Vec<String>, round_quizzers: &mut Vec<String>, confirmed_teams: &mut Vec<String>, confirmed_quizzers: &mut Vec<String>, verbose: bool, action: &mut bool) {
+fn check_valid_round(round_teams: &mut Vec<String>, round_quizzers: &mut Vec<String>, confirmed_teams: &mut Vec<String>, confirmed_quizzers: &mut Vec<String>, verbose: bool, action: &mut bool) -> bool {
+    let mut valid = false;
     if *action {
         for i in 0..round_quizzers.len() {
             if !confirmed_quizzers.contains(&round_quizzers[i]) {
@@ -638,6 +648,7 @@ fn check_valid_round(round_teams: &mut Vec<String>, round_quizzers: &mut Vec<Str
             eprintln!("Confirming Teams: {:?}", round_teams);
             eprintln!("Confirming Quizzers: {:?}", round_quizzers);
         }
+        valid = true;
     } else {
         if verbose {
             eprintln!("No action taken in round, teams: {:?} might be from practice", round_teams);
@@ -646,6 +657,7 @@ fn check_valid_round(round_teams: &mut Vec<String>, round_quizzers: &mut Vec<Str
     *action = false;
     round_teams.clear();
     round_quizzers.clear();
+    valid
 }
 
 fn filter_records(records: Vec<csv::StringRecord>, tourn: String) -> Vec<csv::StringRecord> {
