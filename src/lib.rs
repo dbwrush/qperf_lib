@@ -68,7 +68,7 @@ pub fn qperf(question_sets_path: &str, quiz_data_path: &str, verbose: bool, type
         eprintln!("Beginning to process quiz data");
     }
 
-    update_arrays(&mut warns, records, &quizzer_names, question_types_by_round, &mut attempts, &mut correct_answers, &mut bonus_attempts, &mut bonus, false);
+    update_arrays(&mut warns, records, &quizzer_names, question_types_by_round, &mut attempts, &mut correct_answers, &mut bonus_attempts, &mut bonus, verbose);
 
     let result = build_results(quizzer_names, attempts, correct_answers, bonus_attempts, bonus, types, delim, team_names);
 
