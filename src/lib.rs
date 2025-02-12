@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 use std::io::{self};
 use std::fs;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 lazy_static! {
     static ref QUESTION_TYPE_INDICES: HashMap<char, usize> = {
@@ -14,24 +14,27 @@ lazy_static! {
     };
 }
 
+//struct representing a round of quizzing, containing the names and scores for 2-3 teams.
+pub struct Round {
+    pub round_number: String,
+    pub room_number : String,
+    pub team_names  : Vec<String>,
+    pub team_scores : Vec<u32>,
+}
+
 pub fn get_question_types() -> Vec<char> {
     ['A', 'G', 'I', 'Q', 'R', 'S', 'X', 'V', 'M'].to_vec()
 }
 
-pub fn qperformance(question_sets_dir_path: &str, quiz_data_path: &str) -> Result<(Vec<String>, String), Box<dyn std::error::Error>> {
-    qperf(question_sets_dir_path, quiz_data_path, false, ['A', 'G', 'I', 'Q', 'R', 'S', 'X', 'V', 'M'].to_vec(), ",".to_string(), "".to_string())
+pub fn qperformance(question_sets_path: &str, quiz_data_path: &str) -> Result<(Vec<String>, String), Box<dyn std::error::Error>> {
+    qperf(question_sets_path, quiz_data_path, false, ['A', 'G', 'I', 'Q', 'R', 'S', 'X', 'V', 'M'].to_vec(), ",".to_string(), "".to_string())
 }
 
-pub fn qperf(question_sets_dir_path: &str, quiz_data_path: &str, verbose: bool, types: Vec<char>, delim: String, tourn: String) -> Result<(Vec<String>, String), Box<dyn std::error::Error>> {
+pub fn qperf(question_sets_path: &str, quiz_data_path: &str, verbose: bool, types: Vec<char>, delim: String, tourn: String) -> Result<(Vec<String>, String), Box<dyn std::error::Error>> {
     let mut warns = Vec::new();
     
-    // Validate the paths
-    if !Path::new(question_sets_dir_path).exists() {
-        return Err(format!("Error: The path to the question sets does not exist: {}", question_sets_dir_path).into());
-    }
-    if !Path::new(quiz_data_path).exists() {
-        return Err(format!("Error: The path to the quiz data does not exist: {}", quiz_data_path).into());
-    }
+    // Validate paths
+    let (set_paths, data_paths) = validate_and_build_paths(question_sets_path, quiz_data_path, verbose)?;
 
     if verbose {
         //print requested question types
@@ -45,68 +48,12 @@ pub fn qperf(question_sets_dir_path: &str, quiz_data_path: &str, verbose: bool, 
         }
     }
 
-    let mut entries = Vec::new();
-    if Path::new(question_sets_dir_path).is_dir() {
-        // Read the directory and sort the entries by name
-        entries = fs::read_dir(question_sets_dir_path)?
-            .map(|res| res.map(|e| e.path()))
-            .collect::<Result<_, io::Error>>()?;
-        entries.sort();
-        if verbose {//Display number of files found along with the path.
-            eprintln!("Found {} files in directory: {:?}", entries.len(), question_sets_dir_path);            
-        }
-    } else if Path::new(question_sets_dir_path).is_file() {
-        if verbose {
-            eprintln!("Reading file: {:?}", question_sets_dir_path);
-        }
-        entries.push(Path::new(question_sets_dir_path).to_path_buf());
-    } else {
-        return Err(format!("Error: The path to the question sets is not a file or directory: {}", question_sets_dir_path).into());
-    }
-
     //map round number to question types
-    let mut question_types_by_round: HashMap<String, Vec<char>> = HashMap::new();
+    let question_types_by_round = get_question_types_by_round(set_paths, verbose);
 
-    for entry in entries {
-        if let Some(ext) = entry.extension() {
-            if ext == "rtf" {
-                if verbose {
-                    eprintln!("Found RTF file: {:?}", entry);
-                }
-                let question_types = read_rtf_file(entry.to_str().unwrap())?;
-                //iterate through the map from this file and add to the main map, checking for duplicate round numbers and giving warnings for them.
-                for (round_number, question_types) in question_types {
-                    if question_types_by_round.contains_key(&round_number) {
-                        eprintln!("Warning: Duplicate question set number: {}, using only the first.", round_number);
-                    } else {
-                        question_types_by_round.insert(round_number, question_types);
-                    }
-                }
-            }
-        }
-    }
-    if verbose {
-        eprintln!("{:?}", question_types_by_round);
-    }
-
-    let mut quiz_records = vec![];
     //read quiz data file
-    match read_csv_file(quiz_data_path) {
-        Ok(records) => {
-            quiz_records = records.clone();
-        }
-        Err(e) => eprintln!("Quiz data contains formatting error: {}", e),
-    }
-
-    let records = filter_records(quiz_records, tourn);
-    if verbose {
-        eprintln!("Found {} records", records.len());
-    }
-    let (quizzer_names, team_names) = get_quizzer_names(records.clone(), verbose, &mut warns);
-    if verbose {
-        eprintln!("Quizzer Names: {:?}", quizzer_names);
-        eprintln!("Team Names: {:?}", team_names);
-    }
+    let (records, quizzer_names, team_names) = get_records(data_paths, verbose, tourn, &mut warns);
+    
     let num_quizzers = quizzer_names.len();
     let num_question_types = QUESTION_TYPE_INDICES.len();
 
@@ -115,11 +62,112 @@ pub fn qperf(question_sets_dir_path: &str, quiz_data_path: &str, verbose: bool, 
     let mut bonus_attempts: Vec<Vec<u32>> = vec![vec![0; num_question_types]; num_quizzers];
     let mut bonus: Vec<Vec<u32>> = vec![vec![0; num_question_types]; num_quizzers];
 
+    //updatable list of rounds, used track team scores.
+    let mut rounds: Vec<Round> = Vec::new();
+
     update_arrays(&mut warns, records, &quizzer_names, question_types_by_round, &mut attempts, &mut correct_answers, &mut bonus_attempts, &mut bonus, false);
 
     let result = build_results(quizzer_names, attempts, correct_answers, bonus_attempts, bonus, types, delim, team_names);
 
     Ok((warns, result))
+}
+
+fn validate_and_build_paths(question_sets_path: &str, quiz_data_path: &str, verbose: bool) -> Result<(Vec<std::path::PathBuf>, Vec<std::path::PathBuf>), Box<dyn std::error::Error>> {
+     // Validate the paths
+     if !Path::new(question_sets_path).exists() {
+        return Err(format!("Error: The path to the question sets does not exist: {}", question_sets_path).into());
+    }
+    if !Path::new(quiz_data_path).exists() {
+        return Err(format!("Error: The path to the quiz data does not exist: {}", quiz_data_path).into());
+    }
+
+    //Check if paths begin with "" or '' and remove them if they do.
+    let question_sets_path = question_sets_path.trim_matches('\'').trim_matches('"');
+    let quiz_data_path = quiz_data_path.trim_matches('\'').trim_matches('"');
+
+    //Check if paths contain a comma. If they do, it's likely the user entered a comma separated list of question types.
+    let set_paths_str: Vec<&str> = question_sets_path.split(',').collect();
+    let data_paths_str: Vec<&str> = quiz_data_path.split(',').collect();
+    
+    //validate paths. data must be .csv, sets must be .rtf
+    for path in &set_paths_str {
+        if !Path::new(path).exists() {
+            return Err(format!("Error: The path to the question sets does not exist: {}", path).into());
+        }
+        if Path::new(path).extension().unwrap() != "rtf" {
+            return Err(format!("Error: The path to the question sets is not an RTF file: {}", path).into());
+        }
+    }
+    for path in &data_paths_str {
+        if !Path::new(path).exists() {
+            return Err(format!("Error: The path to the quiz data does not exist: {}", path).into());
+        }
+        if Path::new(path).extension().unwrap() != "csv" {
+            return Err(format!("Error: The path to the quiz data is not a CSV file: {}", path).into());
+        }
+    }
+
+    //convert to PathBuf
+    let set_paths: Vec<std::path::PathBuf> = set_paths_str.iter().map(|s| std::path::PathBuf::from(s)).collect();
+    let data_paths: Vec<std::path::PathBuf> = data_paths_str.iter().map(|s| std::path::PathBuf::from(s)).collect();
+
+    if verbose {
+        eprintln!("Question Sets Paths: {:?}", set_paths);
+        eprintln!("Quiz Data Paths: {:?}", data_paths);
+    }
+
+    Ok((set_paths, data_paths))
+}
+
+fn get_question_types_by_round(set_paths: Vec<PathBuf>, verbose: bool) -> HashMap<String, Vec<char>> {
+    let mut question_types_by_round: HashMap<String, Vec<char>> = HashMap::new();
+    for entry in set_paths {
+        if verbose {
+            eprintln!("Found RTF file: {:?}", entry);
+        }
+        let question_types = read_rtf_file(entry.to_str().unwrap());
+        //iterate through the map from this file and add to the main map, checking for duplicate round numbers and giving warnings for them.
+        for (round_number, question_types) in question_types.unwrap() {
+            if question_types_by_round.contains_key(&round_number) {
+                eprintln!("Warning: Duplicate question set number: {}, using only the first.", round_number);
+            } else {
+                question_types_by_round.insert(round_number, question_types);
+            }
+        }
+    }
+    if verbose {
+        eprintln!("{:?}", question_types_by_round);
+    }
+
+    question_types_by_round
+}
+
+fn get_records(data_paths: Vec<PathBuf>, verbose: bool, tourn: String, warns: &mut Vec<String>) -> (Vec<csv::StringRecord>, Vec<String>, Vec<String>) {
+    let mut quiz_records = vec![];    
+    for entry in data_paths {
+        if verbose {
+            eprintln!("Found CSV file: {:?}", entry);
+        }
+        //read quiz data file
+        match read_csv_file(entry.to_str().unwrap()) {
+            Ok(records) => {
+                quiz_records = records.clone();
+            }
+            Err(e) => eprintln!("Quiz data contains formatting error: {}", e),
+        }
+    }
+
+    let records = filter_records(quiz_records, tourn);
+    if verbose {
+        eprintln!("Found {} records", records.len());
+    }
+    let (quizzer_names, team_names) = get_quizzer_names(records.clone(), verbose, warns);
+    if verbose {
+        eprintln!("Quizzer Names: {:?}", quizzer_names);
+        eprintln!("Team Names: {:?}", team_names);
+    }
+
+    (records, quizzer_names, team_names)
 }
 
 fn build_results(quizzer_names: Vec<String>, attempts: Vec<Vec<u32>>, correct_answers: Vec<Vec<u32>>, bonus_attempts: Vec<Vec<u32>>, bonus: Vec<Vec<u32>>, types: Vec<char>, delim: String, team_names: Vec<String>) -> String {
@@ -167,25 +215,78 @@ fn build_results(quizzer_names: Vec<String>, attempts: Vec<Vec<u32>>, correct_an
 fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizzer_names: &Vec<String>, question_types: HashMap<String, Vec<char>>, attempts: &mut Vec<Vec<u32>>, correct_answers: &mut Vec<Vec<u32>>, bonus_attempts: &mut Vec<Vec<u32>>, bonus: &mut Vec<Vec<u32>>, verbose: bool) {
     //list of skipped rounds
     let mut missing: Vec<String> = Vec::new();
+    let mut rounds: Vec<Round> = Vec::new();
+    
+    let mut round_number = String::new();
+    let mut room_number = String::new();
+
+    struct TeamStat {
+        team_name: String,
+        team_score: u32,
+        active_quizzers: Vec<(String, u32, u32)>,//used to track when quizzers earn a team bonus or point deduction
+        //String: quizzer name, u32: count questions (NOT BONUSES) correct, u32: count questions (NOT BONUESES) incorrect.
+
+        /*
+        BONUS RULES:
+        1. If the opposing team gets a question wrong, this team gets a chance to attempt the question for a bonus (half points). +10pts
+        2. If a third or fourth quizzer from this team answers a question correctly, they get a bonus. +10pts
+        3. If any quizzer answers 4 questions correctly in a round, their team gets a bonus. +10pts
+        4. If any quizzer answers 3 questions incorrectly in a round, their team gets a point deduction. -10pts
+        5. Incorrect answers after question 16 are a deduction of 10 points.
+         */
+    }
+
+    let mut teams: Vec<TeamStat> = Vec::new();
 
     for record in records {
+
 
         // Split the record by commas to get the columns
         let columns: Vec<&str> = record.into_iter().collect();
         // Get the event type code, quizzer name, and question number
         let event_code = columns.get(10).unwrap_or(&"");
 
+        let team_number: usize = columns.get(8).unwrap_or(&"").parse().unwrap_or(0);
+
         let quizzer_name = columns.get(7).unwrap_or(&"");
 
-        let round_number = columns.get(4).unwrap_or(&"");
+        let record_round_number = columns.get(4).unwrap_or(&"");
+
+        let record_room_number = columns.get(3).unwrap_or(&"");
 
         let question_number = columns.get(5).unwrap_or(&"").trim_matches('\'').parse::<usize>().unwrap_or(0) - 1;
+
+        //Check for signs of new round starting (room number, round number change, or event code "RM")
+        if room_number != *record_room_number || round_number != *record_round_number || event_code == &"RM" {
+            //Check if this is the first round. If it is, don't add a new round to the list.
+            if room_number != "" && round_number != "" {
+                //Add the current round to the list of rounds.
+                let round = Round {
+                    round_number: round_number.clone(),
+                    room_number: room_number.clone(),
+                    //use teams for filling team_names and team_scores for this round
+                    team_names: teams.iter().map(|t| t.team_name.clone()).collect(),
+                    team_scores: teams.iter().map(|t| t.team_score).collect(),
+                };
+                if verbose {
+                    eprintln!("Round: {} Room: {} Teams: {:?} Scores: {:?}", round_number, room_number, round.team_names, round.team_scores);
+                }
+                
+                //Add the round to the list of rounds.
+                rounds.push(round);
+            }
+            //reset the room number and round number.
+            room_number = record_room_number.to_string();
+            round_number = record_round_number.to_string();
+            //reset the list of teams.
+            teams = Vec::new();
+        }
 
         // Find the index of the quizzer in the quizzer_names array
         let quizzer_index = quizzer_names.iter().position(|n| n == quizzer_name).unwrap_or(0);
 
         // Check if the round is in the question types map
-        if !question_types.contains_key(round_number as &str) {
+        if !question_types.contains_key(&record_round_number as &str) {
             if !missing.contains(&round_number.to_string()) {
                 missing.push(round_number.to_string());
             }
@@ -210,7 +311,7 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
         // Get the question type based on question number
         let mut question_type = 'G';
         if (question_number + 1) != 21 {
-            question_type = question_types.get(round_number as &str).unwrap_or(&vec!['G'])[question_number];
+            question_type = question_types.get(&record_round_number as &str).unwrap_or(&vec!['G'])[question_number];
         }
         let question_type = question_type;
 
@@ -226,7 +327,7 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
         }
         // Update the arrays based on the event type code
         match *event_code {
-            "'TC'" => {
+            "'TC'" => {//Quizzer attempted to answer a question and got it right.
                 attempts[quizzer_index][question_type_index] += 1;
                 correct_answers[quizzer_index][question_type_index] += 1;
                 //also add for memory total
@@ -234,25 +335,104 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                     attempts[quizzer_index][8] += 1;
                     correct_answers[quizzer_index][8] += 1;
                 }
+                /*Add 20 (full points) to team score. Add 1 question for the quizzer.
+                  If this is the quizzer's 4th question, add 10 point bonus to team score.
+                  If this quizzer is the 3rd or 4th to get a question right, add 10 point bonus to team score.*/
+                if let Some(team) = teams.get_mut(team_number) {
+                    team.team_score += 20;
+                    //see if the quizzer is already in the list. Check for name only, not correct/incorrrect count.
+                    if !team.active_quizzers.iter().any(|q| q.0 == *quizzer_name) {
+                        team.active_quizzers.push((quizzer_name.to_string(), 1, 0));
+                    } else {
+                        let quizzer = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name).unwrap();
+                        quizzer.1 += 1;
+                        if quizzer.1 == 4 {
+                            team.team_score += 10;
+                        }
+                    }
+                    //Check if at least 3 quizzers on this team have a .1 (second element of tuple, the u32) greater than 0
+                    //AND that the current quizzer had a .1 over 1 (because this is their first correct question this round)
+                    if team.active_quizzers.iter().filter(|q| q.1 > 0).count() >= 3 {
+                        if let Some(quizzer) = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name) {
+                            if quizzer.1 > 1 {
+                                team.team_score += 10;//Apply 3rd or 4th person bonus.
+                            }
+                        }
+                    }
+                } else {//This should NEVER happen. If it does, something is very wrong with the data.
+                    let new_team = TeamStat {
+                        team_name: "".to_string(),
+                        team_score: 20,
+                        active_quizzers: vec![(quizzer_name.to_string(), 1, 0)],
+                    };
+                    teams.push(new_team);
+                    warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
+                }
             }
-            "'TE'" => {
+            "'TE'" => {//Quizzer attempted a question but got it wrong.
                 attempts[quizzer_index][question_type_index] += 1;
                 if memory {
                     attempts[quizzer_index][8] += 1;
                 }
+                //Deduct 10 points if EITHER we are on or after question 16, or this is the quizzer's 3rd incorrect answer.
+                //Incorrect answers are in .2, the third element of the tuple.
+                if question_number >= 15 || teams.iter().any(|t| t.active_quizzers.iter().any(|q| q.0 == *quizzer_name && q.2 == 2)) {
+                    if let Some(team) = teams.get_mut(team_number) {
+                        team.team_score -= 10;
+                    } else {
+                        let new_team = TeamStat {
+                            team_name: "".to_string(),
+                            team_score: 0,
+                            active_quizzers: Vec::new(),
+                        };
+                        teams.push(new_team);
+                        warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
+                    }
+                }
             }
-            "'BC'" => {
+            "'BC'" => {//Quizzer answered a bonus question correctly.
                 bonus_attempts[quizzer_index][question_type_index] += 1;
                 bonus[quizzer_index][question_type_index] += 1;
                 if memory {
                     bonus_attempts[quizzer_index][8] += 1;
                     bonus[quizzer_index][8] += 1;
                 }
+                //Add bonus of 10 to team score. Make sure the quizzer is considered active.
+                if let Some(team) = teams.get_mut(team_number) {
+                    team.team_score += 10;
+                } else {
+                    let new_team = TeamStat {
+                        team_name: "".to_string(),
+                        team_score: 10,
+                        active_quizzers: Vec::new(),
+                    };
+                    teams.push(new_team);
+                    warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
+                }
+                //If quizzer not in active list, add them.
+                if !teams.iter().any(|t| t.active_quizzers.iter().any(|q| q.0 == *quizzer_name)) {
+                    if let Some(team) = teams.get_mut(team_number) {
+                        team.active_quizzers.push((quizzer_name.to_string(), 0, 0));
+                    }
+                }
             }
-            "'BE'" => {
+            "'BE'" => {//Quizzer answered a bonus question incorrectly.
                 bonus_attempts[quizzer_index][question_type_index] += 1;
                 if memory {
                     bonus_attempts[quizzer_index][8] += 1;
+                }
+                //This does nothing to team scoring. Move along.
+            }
+            "'TN'" => {//Team name. Use team name to see if it's already listed. If not, add it.
+                let team_name = quizzer_name.to_string();
+                let team_index = teams.iter().position(|t| t.team_name == team_name).unwrap_or(usize::MAX);
+                if team_index == usize::MAX {
+                    //team not found. Add it.
+                    teams.push(TeamStat {
+                        team_name: team_name,
+                        team_score: 0,
+                        active_quizzers: Vec::new(),
+                    });
                 }
             }
             _ => {}
