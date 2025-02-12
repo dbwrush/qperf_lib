@@ -233,7 +233,7 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
         BONUS RULES:
         1. If the opposing team gets a question wrong, this team gets a chance to attempt the question for a bonus (half points). +10pts
         2. If a third or fourth quizzer from this team answers a question correctly, they get a bonus. +10pts
-        3. If any quizzer answers 4 questions correctly in a round, their team gets a bonus. +10pts
+        3. If any quizzer answers 4 questions correctly in a round without error, their team gets a bonus. +10pts
         4. If any quizzer answers 3 questions incorrectly in a round, their team gets a point deduction. -10pts
         5. Incorrect answers after question 16 are a deduction of 10 points.
          */
@@ -346,22 +346,23 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                     correct_answers[quizzer_index][8] += 1;
                 }
                 /*Add 20 (full points) to team score. Add 1 question for the quizzer.
-                  If this is the quizzer's 4th question, add 10 point bonus to team score.
+                  If this is the quizzer's 4th question without any incorrect, add 10 point bonus to team score.
                   If this quizzer is the 3rd or 4th to get a question right, add 10 point bonus to team score.*/
                 if let Some(team) = teams.get_mut(team_number) {
                     team.team_score += 20;
+                    if verbose {
+                        eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question right. Added 20 points to team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
+                    }
                     //see if the quizzer is already in the list. Check for name only, not correct/incorrrect count.
                     if !team.active_quizzers.iter().any(|q| q.0 == *quizzer_name) {
                         team.active_quizzers.push((quizzer_name.to_string(), 1, 0));
                     } else {
                         let quizzer = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name).unwrap();
                         quizzer.1 += 1;
-                        if quizzer.1 == 4 {
+                        if quizzer.1 == 4 && quizzer.2 == 0 {
+                            eprintln!("[Team Scoring] Quiz-out bonus applied to team {}.", team.team_name);
                             team.team_score += 10;
                         }
-                    }
-                    if verbose {
-                        eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question right. Added 20 points to team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
                     }
                     //Check if at least 3 quizzers on this team have a .1 (second element of tuple, the u32) greater than 0
                     //AND that the current quizzer had a .1 over 1 (because this is their first correct question this round)
