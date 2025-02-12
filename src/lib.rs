@@ -364,7 +364,9 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                         let quizzer = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name).unwrap();
                         quizzer.1 += 1;
                         if quizzer.1 == 4 && quizzer.2 == 0 {
-                            eprintln!("[Team Scoring] Quiz-out bonus applied to team {}.", team.team_name);
+                            if verbose {
+                                eprintln!("[Team Scoring] Quiz-out bonus applied to team {}.", team.team_name);
+                            }
                             team.team_score += 10;
                         }
                     }
