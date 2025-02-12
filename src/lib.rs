@@ -406,6 +406,14 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                             }
                         }
                     } else {
+                        if question_number >= 15 {
+                            team.team_score -= 10;
+                            if verbose {
+                                eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number, quizzer_name, team.team_name);
+                            }
+                        } else if verbose {
+                            eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. No penalty applied.", room_number, round_number, question_number + 1, quizzer_name);
+                        }
                         let new_quizzer = (quizzer_name.to_string(), 0, 1);
                         team.active_quizzers.push(new_quizzer);
                     }
