@@ -68,7 +68,7 @@ pub fn qperf(question_sets_path: &str, quiz_data_path: &str, verbose: bool, type
         eprintln!("Beginning to process quiz data");
     }
 
-    update_arrays(&mut warns, records, &quizzer_names, question_types_by_round, &mut attempts, &mut correct_answers, &mut bonus_attempts, &mut bonus, verbose);
+    update_arrays(&mut warns, records, &quizzer_names, question_types_by_round, &mut attempts, &mut correct_answers, &mut bonus_attempts, &mut bonus, verbose, &mut rounds);
 
     let result = build_individual_results(quizzer_names, attempts, correct_answers, bonus_attempts, bonus, types, delim.clone(), team_names);
 
@@ -219,10 +219,9 @@ fn build_individual_results(quizzer_names: Vec<String>, attempts: Vec<Vec<u32>>,
     result
 }
 
-fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizzer_names: &Vec<String>, question_types: HashMap<String, Vec<char>>, attempts: &mut Vec<Vec<u32>>, correct_answers: &mut Vec<Vec<u32>>, bonus_attempts: &mut Vec<Vec<u32>>, bonus: &mut Vec<Vec<u32>>, verbose: bool) {
+fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizzer_names: &Vec<String>, question_types: HashMap<String, Vec<char>>, attempts: &mut Vec<Vec<u32>>, correct_answers: &mut Vec<Vec<u32>>, bonus_attempts: &mut Vec<Vec<u32>>, bonus: &mut Vec<Vec<u32>>, verbose: bool, rounds: &mut Vec<Round>) {
     //list of skipped rounds
     let mut missing: Vec<String> = Vec::new();
-    let mut rounds: Vec<Round> = Vec::new();
     
     let mut round_number = String::new();
     let mut room_number = String::new();
