@@ -331,7 +331,7 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
         //Q, R, and V all count towards a total for memory verses.
         let memory = question_type == 'Q' || question_type == 'R' || question_type == 'V';
         if verbose {
-            eprintln!("QType: {} ", question_type);
+            eprint!("QType: {} ", question_type);
         }
         // Find the index of the question type in the arrays
         let question_type_index = *QUESTION_TYPE_INDICES.get(&question_type).unwrap_or(&0);
