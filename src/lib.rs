@@ -259,6 +259,9 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
         //Check for signs of new round starting (room number, round number change, or event code "RM")
         if room_number != *record_room_number || round_number != *record_round_number || event_code == &"RM" {
             //Check if this is the first round. If it is, don't add a new round to the list.
+            if verbose {
+                eprintln!("Possible end of round detected");
+            }
             if room_number != "" && round_number != "" {
                 //Add the current round to the list of rounds.
                 let round = Round {
@@ -274,6 +277,10 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                 
                 //Add the round to the list of rounds.
                 rounds.push(round);
+            } else {
+                if verbose {
+                    eprintln!("Nope, this is the beginning of the first round.");
+                }
             }
             //reset the room number and round number.
             room_number = record_room_number.to_string();
