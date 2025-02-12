@@ -382,11 +382,19 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                         }
                     }
                 } else {//This should NEVER happen. If it does, something is very wrong with the data.
-                    teams[team_number] = TeamStat {
-                        team_name: "".to_string(),
-                        team_score: 10,
-                        active_quizzers: vec![(quizzer_name.to_string(), 0, 0)],
-                    };
+                    if teams.len() <= team_number {
+                        teams.push(TeamStat {
+                            team_name: quizzer_name.to_string(),
+                            team_score: 0,
+                            active_quizzers: Vec::new(),
+                        });
+                    } else {
+                        teams[team_number] = TeamStat {
+                            team_name: quizzer_name.to_string(),
+                            team_score: 0,
+                            active_quizzers: Vec::new(),
+                        };
+                    }
                     warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
                 }
             }
@@ -423,11 +431,19 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                         team.active_quizzers.push(new_quizzer);
                     }
                 } else {
-                    teams[team_number] = TeamStat {
-                        team_name: "".to_string(),
-                        team_score: 10,
-                        active_quizzers: vec![(quizzer_name.to_string(), 0, 0)],
-                    };
+                    if teams.len() <= team_number {
+                        teams.push(TeamStat {
+                            team_name: quizzer_name.to_string(),
+                            team_score: 0,
+                            active_quizzers: Vec::new(),
+                        });
+                    } else {
+                        teams[team_number] = TeamStat {
+                            team_name: quizzer_name.to_string(),
+                            team_score: 0,
+                            active_quizzers: Vec::new(),
+                        };
+                    }
                     warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
                 }
             }
@@ -445,11 +461,19 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                         eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a bonus right. Added 10 points to team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
                     }
                 } else {
-                    teams[team_number] = TeamStat {
-                        team_name: "".to_string(),
-                        team_score: 10,
-                        active_quizzers: vec![(quizzer_name.to_string(), 0, 0)],
-                    };
+                    if teams.len() <= team_number {
+                        teams.push(TeamStat {
+                            team_name: quizzer_name.to_string(),
+                            team_score: 0,
+                            active_quizzers: Vec::new(),
+                        });
+                    } else {
+                        teams[team_number] = TeamStat {
+                            team_name: quizzer_name.to_string(),
+                            team_score: 0,
+                            active_quizzers: Vec::new(),
+                        };
+                    }
                     warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
                 }
                 //If quizzer not in active list, add them.
@@ -467,11 +491,19 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                 //This does nothing to team scoring. Move along.
             }
             "'TN'" => {//Team name. Use team name to see if it's already listed. If not, add it.
-                teams[team_number] = TeamStat {
-                    team_name: quizzer_name.to_string(),
-                    team_score: 0,
-                    active_quizzers: Vec::new(),
-                };
+                if teams.len() <= team_number {
+                    teams.push(TeamStat {
+                        team_name: quizzer_name.to_string(),
+                        team_score: 0,
+                        active_quizzers: Vec::new(),
+                    });
+                } else {
+                    teams[team_number] = TeamStat {
+                        team_name: quizzer_name.to_string(),
+                        team_score: 0,
+                        active_quizzers: Vec::new(),
+                    };
+                }
             }
             _ => {}
         }
