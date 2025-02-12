@@ -70,7 +70,7 @@ pub fn qperf(question_sets_path: &str, quiz_data_path: &str, verbose: bool, type
 
     update_arrays(&mut warns, records, &quizzer_names, question_types_by_round, &mut attempts, &mut correct_answers, &mut bonus_attempts, &mut bonus, verbose);
 
-    let result = build_results(quizzer_names, attempts, correct_answers, bonus_attempts, bonus, types, delim, team_names);
+    let result = build_individual_results(quizzer_names, attempts, correct_answers, bonus_attempts, bonus, types, delim, team_names);
 
     Ok((warns, result))
 }
@@ -173,7 +173,7 @@ fn get_records(data_paths: Vec<PathBuf>, verbose: bool, tourn: String, warns: &m
     (records, quizzer_names, team_names)
 }
 
-fn build_results(quizzer_names: Vec<String>, attempts: Vec<Vec<u32>>, correct_answers: Vec<Vec<u32>>, bonus_attempts: Vec<Vec<u32>>, bonus: Vec<Vec<u32>>, types: Vec<char>, delim: String, team_names: Vec<String>) -> String {
+fn build_individual_results(quizzer_names: Vec<String>, attempts: Vec<Vec<u32>>, correct_answers: Vec<Vec<u32>>, bonus_attempts: Vec<Vec<u32>>, bonus: Vec<Vec<u32>>, types: Vec<char>, delim: String, team_names: Vec<String>) -> String {
     let mut result = String::new();
 
     // Build the header
@@ -499,6 +499,67 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
         //eprintln!("If your question sets are not named correctly, please rename them to match the round numbers in the quiz data file");
         warns.push(format!("If your question sets are not named correctly, please rename them to match the round numbers in the quiz data file"));
     }
+}
+
+fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String) -> String {
+    let mut result = String::new();
+
+    // This function will both display the results of each individual round (showing room number, round number, team names, and scores)
+    // And it will also display the final ranking
+
+    // Display the results of each individual round
+    result.push_str("Individual Round Results\n\n");
+    for round in &rounds {
+        result.push_str(&format!("Room: {}{} Round: {}\n", round.room_number, delim, round.round_number));
+        for (i, team_name) in round.team_names.iter().enumerate() {
+            result.push_str(&format!("{}:{} {}\n", team_name, delim, round.team_scores[i]));
+        }
+        result.push('\n');
+    }
+    result.push('\n');
+
+    /*Construct final results
+    Simple algorithm for now, assign each team points based on the number of teams it defeats in a given round.
+    Rounds have up to 3 teams, so a team can earn 0, 1, or 2 points per round.
+    Once all rounds are processed, sort teams by number of points earned.*/
+    let mut team_points: HashMap<String, u32> = HashMap::new();
+    let mut team_totals: HashMap<String, u32> = HashMap::new();
+    for round in &rounds {
+        for (i, team_name) in round.team_names.iter().enumerate() {
+            let team_score = round.team_scores[i];
+            let mut points = 0;
+            for (j, other_team_name) in round.team_names.iter().enumerate() {
+                if i == j {//skip the team's own score.
+                    continue;
+                }
+                if team_score > round.team_scores[j] {//if the team's score is higher than the other team's score, they get a point.
+                    points += 1;
+                }
+            }
+            let team_points = team_points.entry(team_name.clone()).or_insert(0);//get the team's points, or add them if they don't exist.
+            *team_points += points;
+            //Add this team's score from this round to their total.
+            let team_total = team_totals.entry(team_name.clone()).or_insert(0);
+            *team_total += team_score;
+        }
+    }
+
+    //sort the teams by points
+    let mut team_points_vec: Vec<_> = team_points.iter().collect();
+    team_points_vec.sort_by(|a, b| b.1.cmp(a.1));//sort by points descending
+
+
+    // Display the final ranking: 
+    result.push_str("Final Ranking\n\n");
+
+    // Header. Team names, total points, total score, separate with delim.
+    result.push_str(&format!("Team{}Points{}Total Score\n", delim, delim));
+    for (team_name, points) in team_points_vec {
+        result.push_str(&format!("{}{}{}{}{}\n", team_name, delim, points, delim, team_totals.get(team_name).unwrap_or(&0)));
+    }
+
+
+    result
 }
 
 fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut Vec<String>) -> (Vec<String>, Vec<String>) {
