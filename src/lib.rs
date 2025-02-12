@@ -361,7 +361,7 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                         }
                     }
                     if verbose {
-                        eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question right. Added 20 points to team {}.", room_number, round_number, question_number, quizzer_name, team.team_name);
+                        eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question right. Added 20 points to team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
                     }
                     //Check if at least 3 quizzers on this team have a .1 (second element of tuple, the u32) greater than 0
                     //AND that the current quizzer had a .1 over 1 (because this is their first correct question this round)
@@ -395,14 +395,14 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                 if let Some(team) = teams.get_mut(team_number) {
                     if let Some(quizzer) = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name) {
                         quizzer.2 += 1;
-                        if quizzer.2 == 3 || question_number >= 16 {
+                        if quizzer.2 == 3 || question_number >= 15 {
                             team.team_score -= 10;
                             if verbose {
                                 eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number, quizzer_name, team.team_name);
                             }
                         } else {
                             if verbose {
-                                eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. No penalty applied.", room_number, round_number, question_number, quizzer_name);
+                                eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. No penalty applied.", room_number, round_number, question_number + 1, quizzer_name);
                             }
                         }
                     } else {
@@ -430,7 +430,7 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                 if let Some(team) = teams.get_mut(team_number) {
                     team.team_score += 10;
                     if verbose {
-                        eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a bonus right. Added 10 points to team {}.", room_number, round_number, question_number, quizzer_name, team.team_name);
+                        eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a bonus right. Added 10 points to team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
                     }
                 } else {
                     let new_team = TeamStat {
