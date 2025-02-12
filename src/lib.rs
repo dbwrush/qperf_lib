@@ -64,6 +64,9 @@ pub fn qperf(question_sets_path: &str, quiz_data_path: &str, verbose: bool, type
 
     //updatable list of rounds, used track team scores.
     let mut rounds: Vec<Round> = Vec::new();
+    if verbose {
+        eprintln!("Beginning to process quiz data");
+    }
 
     update_arrays(&mut warns, records, &quizzer_names, question_types_by_round, &mut attempts, &mut correct_answers, &mut bonus_attempts, &mut bonus, false);
 
