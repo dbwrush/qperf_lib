@@ -485,11 +485,9 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
         }
         if verbose {
             //print state of current round for debugging.
-            //round number, room number, question number
-            eprintln!("Current Round: {} Room: {} Question: {}", round_number, room_number, question_number + 1);
-            //current team scores
-            eprintln!("Current Teams: {:?}", teams.iter().map(|t| t.team_name.clone()).collect::<Vec<String>>());
-            eprintln!("Current Scores: {:?}", teams.iter().map(|t| t.team_score).collect::<Vec<u32>>());
+            //round number, room number, question number, teams, scores.
+            eprintln!("Current Round: {} Room: {} Question: {} Current Teams: {:?} Current Scores: {:?}", round_number, room_number, question_number + 1, 
+                teams.iter().map(|t| t.team_name.clone()).collect::<Vec<String>>(), teams.iter().map(|t| t.team_score).collect::<Vec<u32>>());
         }
     }
     if missing.len() > 0 {
