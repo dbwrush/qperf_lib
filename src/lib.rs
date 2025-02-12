@@ -407,6 +407,10 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                         teams.push(new_team);
                         warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
                     }
+                } else {
+                    if verbose {
+                        eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. No penalty applied.", room_number, round_number, question_number, quizzer_name);
+                    }
                 }
             }
             "'BC'" => {//Quizzer answered a bonus question correctly.
