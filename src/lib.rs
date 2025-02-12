@@ -27,10 +27,10 @@ pub fn get_question_types() -> Vec<char> {
 }
 
 pub fn qperformance(question_sets_path: &str, quiz_data_path: &str) -> Result<(Vec<String>, String), Box<dyn std::error::Error>> {
-    qperf(question_sets_path, quiz_data_path, false, ['A', 'G', 'I', 'Q', 'R', 'S', 'X', 'V', 'M'].to_vec(), ",".to_string(), "".to_string())
+    qperf(question_sets_path, quiz_data_path, false, ['A', 'G', 'I', 'Q', 'R', 'S', 'X', 'V', 'M'].to_vec(), ",".to_string(), "".to_string(), false)
 }
 
-pub fn qperf(question_sets_path: &str, quiz_data_path: &str, verbose: bool, types: Vec<char>, delim: String, tourn: String) -> Result<(Vec<String>, String), Box<dyn std::error::Error>> {
+pub fn qperf(question_sets_path: &str, quiz_data_path: &str, verbose: bool, types: Vec<char>, delim: String, tourn: String, display_rounds: bool) -> Result<(Vec<String>, String), Box<dyn std::error::Error>> {
     let mut warns = Vec::new();
     
     // Validate paths
@@ -73,7 +73,7 @@ pub fn qperf(question_sets_path: &str, quiz_data_path: &str, verbose: bool, type
     let result = build_individual_results(quizzer_names, attempts, correct_answers, bonus_attempts, bonus, types, delim.clone(), team_names);
 
     //append team results to result
-    let team_result = build_team_results(&mut warns, rounds, delim.clone(), verbose);
+    let team_result = build_team_results(&mut warns, rounds, delim.clone(), verbose, display_rounds);
     let result = format!("{}\n{}", result, team_result);
 
     Ok((warns, result))
@@ -528,7 +528,7 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
     }
 }
 
-fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String, verbose: bool) -> String {
+fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String, verbose: bool, display_rounds: bool) -> String {
     let mut result = String::new();
 
     if verbose {
@@ -539,15 +539,17 @@ fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String
     // And it will also display the final ranking
 
     // Display the results of each individual round
-    result.push_str("Individual Round Results\n\n");
-    for round in &rounds {
-        result.push_str(&format!("Room: {}{} Round: {}\n", round.room_number, delim, round.round_number));
-        for (i, team_name) in round.team_names.iter().enumerate() {
-            result.push_str(&format!("{}:{} {}\n", team_name, delim, round.team_scores[i]));
+    if display_rounds {
+        result.push_str("Individual Round Results\n\n");
+        for round in &rounds {
+            result.push_str(&format!("Room: {}{} Round: {}\n", round.room_number, delim, round.round_number));
+            for (i, team_name) in round.team_names.iter().enumerate() {
+                result.push_str(&format!("{}:{} {}\n", team_name, delim, round.team_scores[i]));
+            }
+            result.push('\n');
         }
         result.push('\n');
     }
-    result.push('\n');
 
     /*Construct final results
     Simple algorithm for now, assign each team points based on the number of teams it defeats in a given round.
