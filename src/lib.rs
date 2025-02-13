@@ -637,7 +637,11 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
         //If team_number becomes 0 before any action takes place, it means the names in round_teams might be from a practice session and can't be confirmed.
         if ecode == &"'TN'" {//team name. Check if they're already in the map, and add them if not.
             if team_number == "0" {//this is a new round.
-                check_valid_round(&mut round_teams, &mut round_quizzers, &mut confirmed_teams, &mut confirmed_quizzers, verbose, &mut action);
+                 if check_valid_round(&mut round_teams, &mut round_quizzers, &mut confirmed_teams, &mut confirmed_quizzers, verbose, &mut action) {
+                    //Copy candidate records to verified records
+                    confirmed_records.append(&mut candidate_records);
+                 }
+                candidate_records.clear();
             } else {
                 if action {
                     //This shouldn't ever happen. But I've seen it happen. I'm honeslty not sure what should happen in this situation.
