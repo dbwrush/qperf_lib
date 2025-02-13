@@ -1,7 +1,8 @@
 use lazy_static::lazy_static;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self};
-use std::{clone, fs};
-use std::collections::HashMap;
+use std::fs;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 lazy_static! {
@@ -544,7 +545,7 @@ fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String
         for round in &rounds {
             result.push_str(&format!("Room: {}{} Round: {}\n", round.room_number, delim, round.round_number));
             for (i, team_name) in round.team_names.iter().enumerate() {
-                result.push_str(&format!("{}:{} {}\n", team_name, delim, round.team_scores[i]));
+                result.push_str(&format!("{}{} {}\n", team_name, delim, round.team_scores[i]));
             }
             result.push('\n');
         }
@@ -552,17 +553,18 @@ fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String
     }
 
     /*Construct final results
+    TEMPORARY BASIC SOLUTION
     Simple algorithm for now, assign each team points based on the number of teams it defeats in a given round.
     Rounds have up to 3 teams, so a team can earn 0, 1, or 2 points per round.
     Once all rounds are processed, sort teams by number of points earned.*/
-    let mut team_points: HashMap<String, u32> = HashMap::new();
+    /*let mut team_points: HashMap<String, u32> = HashMap::new();
     let mut team_totals: HashMap<String, u32> = HashMap::new();
     for round in &rounds {
         for (i, team_name) in round.team_names.iter().enumerate() {
             let team_score = round.team_scores[i];
             let mut points = 0;
             for (j, other_team_name) in round.team_names.iter().enumerate() {
-                if i == j {//skip the team's own score.
+                if i == j || other_team_name == "''" {//skip the team's own score and any empty team names.
                     continue;
                 }
                 if team_score > round.team_scores[j] {//if the team's score is higher than the other team's score, they get a point.
@@ -589,8 +591,17 @@ fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String
     result.push_str(&format!("Team{}Points{}Total Score\n", delim, delim));
     for (team_name, points) in team_points_vec {
         result.push_str(&format!("{}{}{}{}{}\n", team_name, delim, points, delim, team_totals.get(team_name).unwrap_or(&0)));
-    }
+    }*/
 
+    let rankings = rank_teams(rounds);
+
+    result.push_str("Team Results\n\n");
+
+    result.push_str(&format!("Name{}Placement{}Wins{}Losses{}Total Score\n", delim, delim, delim, delim));
+    for ranking in rankings {
+        let team_name = ranking.0.trim_matches('"');
+        result.push_str(&format!("{}{}{}{}{}{}{}{}{}\n", team_name, delim, ranking.1, delim, ranking.2, delim, ranking.3, delim, ranking.4));
+    }
 
     result
 }
@@ -757,6 +768,104 @@ fn read_csv_file(path: &str) -> Result<Vec<csv::StringRecord>, csv::Error> {
     }
 
     Ok(records)
+}
+
+//Function to generate a unique hash for a team name
+fn hash_team_name(team: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    team.hash(&mut hasher);
+    hasher.finish()
+}
+
+//Function to generate a unique key for any pair of two teams regardless of order.
+fn generate_matchup_key(team_a: &str, team_b: &str) -> u64 {
+    let hash_a = hash_team_name(team_a);
+    let hash_b = hash_team_name(team_b);
+    if hash_a < hash_b {
+        hash_a * hash_b
+    } else {
+        hash_b * hash_a
+    }
+}
+
+pub fn rank_teams(rounds: Vec<Round>) -> Vec<(String, u32, u32, u32, u32)> {
+    let mut wins: HashMap<String, u32> = HashMap::new();
+    let mut losses: HashMap<String, u32> = HashMap::new();
+    let mut total_scores: HashMap<String, u32> = HashMap::new();
+    let mut head_to_head: HashMap<u64, (u32, u32)> = HashMap::new(); // Uses unique key for matchups
+    
+    let mut teams: HashSet<String> = HashSet::new();
+    
+    // Initialize team records
+    for round in &rounds {
+        for (team, &score) in round.team_names.iter().zip(&round.team_scores) {
+            if !team.is_empty() {
+                teams.insert(team.clone());
+                wins.entry(team.clone()).or_insert(0);
+                losses.entry(team.clone()).or_insert(0);
+                total_scores.entry(team.clone()).or_insert(0);
+                *total_scores.get_mut(team).unwrap() += score;
+            }
+        }
+    }
+    
+    // Process match results
+    for round in &rounds {
+        let mut scored_teams: Vec<(String, u32)> = round
+            .team_names.iter()
+            .cloned()
+            .zip(round.team_scores.iter().cloned())
+            .filter(|(team, _)| !team.is_empty())
+            .collect();
+        
+        if scored_teams.len() < 2 {
+            continue;
+        }
+        
+        // Sort teams by score in descending order
+        scored_teams.sort_by(|a, b| b.1.cmp(&a.1));
+        
+        let winner = &scored_teams[0].0;
+        for (team, score) in scored_teams.iter().skip(1) {
+            *losses.get_mut(team).unwrap() += 1;
+            *wins.get_mut(winner).unwrap() += 1;
+            
+            let key = generate_matchup_key(winner, team);
+            let entry = head_to_head.entry(key).or_insert((0, 0));
+            entry.0 += score; // Total points for the winner in this matchup
+            entry.1 += scored_teams.iter().find(|(t, _)| t == team).unwrap().1; // Total points for the losing team
+        }
+    }
+    
+    // Convert to a sortable vector
+    let mut ranking: Vec<(String, u32, u32, u32, u32)> = teams.into_iter()
+        .map(|team| (team.clone(), 0, wins[&team], losses[&team], total_scores[&team]))
+        .collect();
+    
+    // Sorting logic: losses ASC, wins DESC, head-to-head points as tie-breaker
+    ranking.sort_by(|a, b| {
+        let loss_cmp = a.3.cmp(&b.3);
+        if loss_cmp != std::cmp::Ordering::Equal {
+            return loss_cmp;
+        }
+        
+        let win_cmp = b.2.cmp(&a.2);
+        if win_cmp != std::cmp::Ordering::Equal {
+            return win_cmp;
+        }
+        
+        let key = generate_matchup_key(&a.0, &b.0);
+        let head_to_head_a = head_to_head.get(&key).map(|(a_score, _)| *a_score).unwrap_or(0);
+        let head_to_head_b = head_to_head.get(&key).map(|(_, b_score)| *b_score).unwrap_or(0);
+        head_to_head_b.cmp(&head_to_head_a)
+    });
+    
+    // Assign placement rankings
+    for (i, entry) in ranking.iter_mut().enumerate() {
+        entry.1 = (i + 1) as u32;
+    }
+    
+    ranking
 }
 
 #[cfg(test)]
