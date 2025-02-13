@@ -627,8 +627,6 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
         The below code is an attempt to remove practice team and quizzer names by only adding teams when they participate in 'action'
         */
 
-        candidate_records.push(record.clone());
-
         // Split the record by commas to get the columns
         let columns: Vec<&str> = record.into_iter().collect();
         let ecode = columns.get(10).unwrap_or(&"");//if this is "TN", it's a team name. If it's "QN", it's a quizzer name.
@@ -637,7 +635,11 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
         //If team_number becomes 0 before any action takes place, it means the names in round_teams might be from a practice session and can't be confirmed.
         if ecode == &"'TN'" {//team name. Check if they're already in the map, and add them if not.
             if team_number == "0" {//this is a new round.
-                check_valid_round(&mut round_teams, &mut round_quizzers, &mut confirmed_teams, &mut confirmed_quizzers, verbose, &mut action);
+                 if check_valid_round(&mut round_teams, &mut round_quizzers, &mut confirmed_teams, &mut confirmed_quizzers, verbose, &mut action) {
+                    //Copy candidate records to verified records
+                    confirmed_records.append(&mut candidate_records);
+                 }
+                candidate_records.clear();
             } else {
                 if action {
                     //This shouldn't ever happen. But I've seen it happen. I'm honeslty not sure what should happen in this situation.
@@ -660,6 +662,8 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
             }
             candidate_records.clear();
         }
+
+        candidate_records.push(record.clone());
 
         index += 1;//shouldn't be needed, but for debugging why not have it?
     }
