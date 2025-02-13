@@ -308,7 +308,7 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
             continue;
         }
         if verbose {
-            //eprintln!("{:?}", record);
+            eprintln!("{:?}", record);
         }
         if verbose {
             eprint!("ECode: {} ", event_code);
@@ -509,7 +509,6 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
             _ => {}
         }
         if verbose {
-            continue;
             //print state of current round for debugging.
             //round number, room number, question number, teams, scores.
             eprintln!("Current Round: {} Room: {} Question: {} Current Teams: {:?} Current Scores: {:?}", round_number, room_number, question_number + 1, 
