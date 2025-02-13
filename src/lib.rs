@@ -308,7 +308,7 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
             continue;
         }
         if verbose {
-            eprintln!("{:?}", record);
+            //eprintln!("{:?}", record);
         }
         if verbose {
             eprint!("ECode: {} ", event_code);
