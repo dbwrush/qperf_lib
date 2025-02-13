@@ -150,7 +150,7 @@ fn get_question_types_by_round(set_paths: Vec<PathBuf>, verbose: bool) -> HashMa
     question_types_by_round
 }
 
-fn get_records(data_paths: Vec<PathBuf>, verbose: bool, tourn: String, warns: &mut Vec<String>) -> (Vec<csv::StringRecord>, Vec<String>, Vec<String>) {
+fn get_records(data_paths: Vec<PathBuf>, verbose: bool, tourn: String, warns: &mut Vec<String>) -> (Vec<RecordCollection>, Vec<String>, Vec<String>) {
     let mut quiz_records = vec![];    
     for entry in data_paths {
         if verbose {
@@ -220,7 +220,7 @@ fn build_individual_results(quizzer_names: Vec<String>, attempts: Vec<Vec<u32>>,
     result
 }
 
-fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizzer_names: &Vec<String>, question_types: HashMap<String, Vec<char>>, attempts: &mut Vec<Vec<u32>>, correct_answers: &mut Vec<Vec<u32>>, bonus_attempts: &mut Vec<Vec<u32>>, bonus: &mut Vec<Vec<u32>>, verbose: bool, rounds: &mut Vec<Round>) {
+fn update_arrays(warns: &mut Vec<String>, records: Vec<RecordCollection>, quizzer_names: &Vec<String>, question_types: HashMap<String, Vec<char>>, attempts: &mut Vec<Vec<u32>>, correct_answers: &mut Vec<Vec<u32>>, bonus_attempts: &mut Vec<Vec<u32>>, bonus: &mut Vec<Vec<u32>>, verbose: bool, rounds: &mut Vec<Round>) {
     //list of skipped rounds
     let mut missing: Vec<String> = Vec::new();
     
@@ -245,276 +245,277 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
 
     let mut teams: Vec<TeamStat> = Vec::new();
 
-    for record in records {
-
-
-        // Split the record by commas to get the columns
-        let columns: Vec<&str> = record.into_iter().collect();
-        // Get the event type code, quizzer name, and question number
-        let event_code = columns.get(10).unwrap_or(&"");
-
-        let team_number: usize = columns.get(8).unwrap_or(&"").parse().unwrap_or(0);
-
-        let quizzer_name = columns.get(7).unwrap_or(&"");
-
-        let record_round_number = columns.get(4).unwrap_or(&"");
-
-        let record_room_number = columns.get(3).unwrap_or(&"");
-
-        let question_number = columns.get(5).unwrap_or(&"").trim_matches('\'').parse::<usize>().unwrap_or(0) - 1;
-
-        //Check for signs of new round starting (room number, round number change, or event code "RM")
-        if room_number != *record_room_number || round_number != *record_round_number || event_code == &"RM" {
-            //Check if this is the first round. If it is, don't add a new round to the list.
-            if verbose {
-                eprintln!("Possible end of round detected");
-            }
-            if room_number != "" && round_number != "" {
-                //Add the current round to the list of rounds.
-                let round = Round {
-                    round_number: round_number.clone(),
-                    room_number: room_number.clone(),
-                    //use teams for filling team_names and team_scores for this round
-                    team_names: teams.iter().map(|t| t.team_name.clone()).collect(),
-                    team_scores: teams.iter().map(|t| t.team_score).collect(),
-                };
-                if verbose {
-                    eprintln!("Round: {} Room: {} Teams: {:?} Scores: {:?}", round_number, room_number, round.team_names, round.team_scores);
-                }
-                
-                //Add the round to the list of rounds.
-                rounds.push(round);
-            } else {
-                if verbose {
-                    eprintln!("Nope, this is the beginning of the first round.");
-                }
-            }
-            //reset the room number and round number.
-            room_number = record_room_number.to_string();
-            round_number = record_round_number.to_string();
-            //reset the list of teams.
-            teams = Vec::new();
-        }
-
-        // Find the index of the quizzer in the quizzer_names array
-        let quizzer_index = quizzer_names.iter().position(|n| n == quizzer_name).unwrap_or(0);
-
-        // Check if the round is in the question types map
-        if !question_types.contains_key(&record_round_number as &str) {
-            if !missing.contains(&round_number.to_string()) {
-                missing.push(round_number.to_string());
-            }
-            //eprintln!("Warning: Skipping record due to missing question set for round {}", round_number);
-            continue;
-        }
+    for round_records in records {
         if verbose {
-            eprintln!("{:?}", record);
+            eprintln!("Starting next round");
         }
-        if verbose {
-            eprint!("ECode: {} ", event_code);
-        }
-        if verbose {
-            eprint!("QName: {} ", quizzer_name);
-        }
-        if verbose {//print round number now in case it's invalid.
-            eprint!("RNum: {} ", round_number);
-        }
-        if verbose {
-            eprint!("QNum: {} ", question_number + 1);
-        }
-        // Get the question type based on question number
-        let mut question_type = 'G';
-        if (question_number + 1) != 21 {
-            question_type = question_types.get(&record_round_number as &str).unwrap_or(&vec!['G'])[question_number];
-        }
-        let question_type = question_type;
+        for record in round_records.records {
 
-        //Q, R, and V all count towards a total for memory verses.
-        let memory = question_type == 'Q' || question_type == 'R' || question_type == 'V';
-        if verbose {
-            eprint!("QType: {} ", question_type);
-        }
-        // Find the index of the question type in the arrays
-        let question_type_index = *QUESTION_TYPE_INDICES.get(&question_type).unwrap_or(&0);
-        if verbose {
-            eprintln!("QTInd: {} ", question_type_index);
-        }
-        // Update the arrays based on the event type code
-        match *event_code {
-            "'TC'" => {//Quizzer attempted to answer a question and got it right.
-                attempts[quizzer_index][question_type_index] += 1;
-                correct_answers[quizzer_index][question_type_index] += 1;
-                //also add for memory total
-                if memory {
-                    attempts[quizzer_index][8] += 1;
-                    correct_answers[quizzer_index][8] += 1;
-                }
-                /*Add 20 (full points) to team score. Add 1 question for the quizzer.
-                  If this is the quizzer's 4th question without any incorrect, add 10 point bonus to team score.
-                  If this quizzer is the 3rd or 4th to get a question right, add 10 point bonus to team score.*/
-                if let Some(team) = teams.get_mut(team_number) {
-                    team.team_score += 20;
+            // Split the record by commas to get the columns
+            let columns: Vec<&str> = record.into_iter().collect();
+            // Get the event type code, quizzer name, and question number
+            let event_code = columns.get(10).unwrap_or(&"");
+
+            let team_number: usize = columns.get(8).unwrap_or(&"").parse().unwrap_or(0);
+
+            let quizzer_name = columns.get(7).unwrap_or(&"");
+
+            let record_round_number = columns.get(4).unwrap_or(&"");
+
+            let record_room_number = columns.get(3).unwrap_or(&"");
+
+            let question_number = columns.get(5).unwrap_or(&"").trim_matches('\'').parse::<usize>().unwrap_or(0) - 1;
+
+            //Check for signs of new round starting (room number, round number change, or event code "RM")
+            if room_number != *record_room_number || round_number != *record_round_number || event_code == &"RM" {
+                if room_number != "" && round_number != "" {
+                    //Add the current round to the list of rounds.
+                    let round = Round {
+                        round_number: round_number.clone(),
+                        room_number: room_number.clone(),
+                        //use teams for filling team_names and team_scores for this round
+                        team_names: teams.iter().map(|t| t.team_name.clone()).collect(),
+                        team_scores: teams.iter().map(|t| t.team_score).collect(),
+                    };
                     if verbose {
-                        eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question right. Added 20 points to team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
+                        eprintln!("Round: {} Room: {} Teams: {:?} Scores: {:?}", round_number, room_number, round.team_names, round.team_scores);
                     }
-                    //see if the quizzer is already in the list. Check for name only, not correct/incorrrect count.
-                    if !team.active_quizzers.iter().any(|q| q.0 == *quizzer_name) {
-                        team.active_quizzers.push((quizzer_name.to_string(), 1, 0));
-                    } else {
-                        let quizzer = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name).unwrap();
-                        quizzer.1 += 1;
-                        if quizzer.1 == 4 && quizzer.2 == 0 {
-                            if verbose {
-                                eprintln!("[Team Scoring] Quiz-out bonus applied to team {}.", team.team_name);
-                            }
-                            team.team_score += 10;
+                    
+                    //Add the round to the list of rounds.
+                    rounds.push(round);
+                } else {
+                    if verbose {
+                        eprintln!("Nope, this is the beginning of the first round.");
+                    }
+                }
+                //reset the room number and round number.
+                room_number = record_room_number.to_string();
+                round_number = record_round_number.to_string();
+                //reset the list of teams.
+                teams = Vec::new();
+            }
+
+            // Find the index of the quizzer in the quizzer_names array
+            let quizzer_index = quizzer_names.iter().position(|n| n == quizzer_name).unwrap_or(0);
+
+            // Check if the round is in the question types map
+            if !question_types.contains_key(&record_round_number as &str) {
+                if !missing.contains(&round_number.to_string()) {
+                    missing.push(round_number.to_string());
+                }
+                //eprintln!("Warning: Skipping record due to missing question set for round {}", round_number);
+                continue;
+            }
+            if verbose {
+                eprintln!("{:?}", record);
+            }
+            if verbose {
+                eprint!("ECode: {} ", event_code);
+            }
+            if verbose {
+                eprint!("QName: {} ", quizzer_name);
+            }
+            if verbose {//print round number now in case it's invalid.
+                eprint!("RNum: {} ", round_number);
+            }
+            if verbose {
+                eprint!("QNum: {} ", question_number + 1);
+            }
+            // Get the question type based on question number
+            let mut question_type = 'G';
+            if (question_number + 1) != 21 {
+                question_type = question_types.get(&record_round_number as &str).unwrap_or(&vec!['G'])[question_number];
+            }
+            let question_type = question_type;
+
+            //Q, R, and V all count towards a total for memory verses.
+            let memory = question_type == 'Q' || question_type == 'R' || question_type == 'V';
+            if verbose {
+                eprint!("QType: {} ", question_type);
+            }
+            // Find the index of the question type in the arrays
+            let question_type_index = *QUESTION_TYPE_INDICES.get(&question_type).unwrap_or(&0);
+            if verbose {
+                eprintln!("QTInd: {} ", question_type_index);
+            }
+            // Update the arrays based on the event type code
+            match *event_code {
+                "'TC'" => {//Quizzer attempted to answer a question and got it right.
+                    attempts[quizzer_index][question_type_index] += 1;
+                    correct_answers[quizzer_index][question_type_index] += 1;
+                    //also add for memory total
+                    if memory {
+                        attempts[quizzer_index][8] += 1;
+                        correct_answers[quizzer_index][8] += 1;
+                    }
+                    /*Add 20 (full points) to team score. Add 1 question for the quizzer.
+                    If this is the quizzer's 4th question without any incorrect, add 10 point bonus to team score.
+                    If this quizzer is the 3rd or 4th to get a question right, add 10 point bonus to team score.*/
+                    if let Some(team) = teams.get_mut(team_number) {
+                        team.team_score += 20;
+                        if verbose {
+                            eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question right. Added 20 points to team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
                         }
-                    }
-                    //Check if at least 3 quizzers on this team have a .1 (second element of tuple, the u32) greater than 0
-                    //AND that the current quizzer had a .1 exactly 1 (because this is their first correct question this round)
-                    if team.active_quizzers.iter().filter(|q| q.1 > 0).count() >= 3 {
-                        if let Some(quizzer) = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name) {
-                            if quizzer.1 == 1 {
-                                team.team_score += 10;//Apply 3rd or 4th person bonus.
+                        //see if the quizzer is already in the list. Check for name only, not correct/incorrrect count.
+                        if !team.active_quizzers.iter().any(|q| q.0 == *quizzer_name) {
+                            team.active_quizzers.push((quizzer_name.to_string(), 1, 0));
+                        } else {
+                            let quizzer = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name).unwrap();
+                            quizzer.1 += 1;
+                            if quizzer.1 == 4 && quizzer.2 == 0 {
                                 if verbose {
-                                    eprintln!("[Team Scoring] 3rd/4th person bonus applied to team {}.", team.team_name);
+                                    eprintln!("[Team Scoring] Quiz-out bonus applied to team {}.", team.team_name);
+                                }
+                                team.team_score += 10;
+                            }
+                        }
+                        //Check if at least 3 quizzers on this team have a .1 (second element of tuple, the u32) greater than 0
+                        //AND that the current quizzer had a .1 exactly 1 (because this is their first correct question this round)
+                        if team.active_quizzers.iter().filter(|q| q.1 > 0).count() >= 3 {
+                            if let Some(quizzer) = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name) {
+                                if quizzer.1 == 1 {
+                                    team.team_score += 10;//Apply 3rd or 4th person bonus.
+                                    if verbose {
+                                        eprintln!("[Team Scoring] 3rd/4th person bonus applied to team {}.", team.team_name);
+                                    }
                                 }
                             }
                         }
+                    } else {//This should NEVER happen. If it does, something is very wrong with the data.
+                        if teams.len() <= team_number {
+                            teams.push(TeamStat {
+                                team_name: quizzer_name.to_string(),
+                                team_score: 0,
+                                active_quizzers: Vec::new(),
+                            });
+                        } else {
+                            teams[team_number] = TeamStat {
+                                team_name: quizzer_name.to_string(),
+                                team_score: 0,
+                                active_quizzers: Vec::new(),
+                            };
+                        }
+                        warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
                     }
-                } else {//This should NEVER happen. If it does, something is very wrong with the data.
-                    if teams.len() <= team_number {
-                        teams.push(TeamStat {
-                            team_name: quizzer_name.to_string(),
-                            team_score: 0,
-                            active_quizzers: Vec::new(),
-                        });
-                    } else {
-                        teams[team_number] = TeamStat {
-                            team_name: quizzer_name.to_string(),
-                            team_score: 0,
-                            active_quizzers: Vec::new(),
-                        };
+                }
+                "'TE'" => {//Quizzer attempted a question but got it wrong.
+                    attempts[quizzer_index][question_type_index] += 1;
+                    if memory {
+                        attempts[quizzer_index][8] += 1;
                     }
-                    warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
-                }
-            }
-            "'TE'" => {//Quizzer attempted a question but got it wrong.
-                attempts[quizzer_index][question_type_index] += 1;
-                if memory {
-                    attempts[quizzer_index][8] += 1;
-                }
-                //Deduct 10 points if EITHER we are on or after question 16, or this is the quizzer's 3rd incorrect answer.
-                //Incorrect answers are in .2, the third element of the tuple.
-                if let Some(team) = teams.get_mut(team_number) {
-                    if let Some(quizzer) = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name) {
-                        quizzer.2 += 1;
-                        if quizzer.2 == 3 || question_number >= 15 {
-                            team.team_score -= 10;
-                            if verbose {
-                                eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
+                    //Deduct 10 points if EITHER we are on or after question 16, or this is the quizzer's 3rd incorrect answer.
+                    //Incorrect answers are in .2, the third element of the tuple.
+                    if let Some(team) = teams.get_mut(team_number) {
+                        if let Some(quizzer) = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name) {
+                            quizzer.2 += 1;
+                            if quizzer.2 == 3 || question_number >= 15 {
+                                team.team_score -= 10;
+                                if verbose {
+                                    eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
+                                }
+                            } else {
+                                if verbose {
+                                    eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. No penalty applied.", room_number, round_number, question_number + 1, quizzer_name);
+                                }
                             }
                         } else {
-                            if verbose {
+                            if question_number >= 15 {
+                                team.team_score -= 10;
+                                if verbose {
+                                    eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
+                                }
+                            } else if verbose {
                                 eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. No penalty applied.", room_number, round_number, question_number + 1, quizzer_name);
                             }
+                            let new_quizzer = (quizzer_name.to_string(), 0, 1);
+                            team.active_quizzers.push(new_quizzer);
                         }
                     } else {
-                        if question_number >= 15 {
-                            team.team_score -= 10;
-                            if verbose {
-                                eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. Deducted 10 points from team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
-                            }
-                        } else if verbose {
-                            eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a question wrong. No penalty applied.", room_number, round_number, question_number + 1, quizzer_name);
+                        if teams.len() <= team_number {
+                            teams.push(TeamStat {
+                                team_name: quizzer_name.to_string(),
+                                team_score: 0,
+                                active_quizzers: Vec::new(),
+                            });
+                        } else {
+                            teams[team_number] = TeamStat {
+                                team_name: quizzer_name.to_string(),
+                                team_score: 0,
+                                active_quizzers: Vec::new(),
+                            };
                         }
-                        let new_quizzer = (quizzer_name.to_string(), 0, 1);
-                        team.active_quizzers.push(new_quizzer);
+                        warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
                     }
-                } else {
-                    if teams.len() <= team_number {
-                        teams.push(TeamStat {
-                            team_name: quizzer_name.to_string(),
-                            team_score: 0,
-                            active_quizzers: Vec::new(),
-                        });
-                    } else {
-                        teams[team_number] = TeamStat {
-                            team_name: quizzer_name.to_string(),
-                            team_score: 0,
-                            active_quizzers: Vec::new(),
-                        };
-                    }
-                    warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
                 }
-            }
-            "'BC'" => {//Quizzer answered a bonus question correctly.
-                bonus_attempts[quizzer_index][question_type_index] += 1;
-                bonus[quizzer_index][question_type_index] += 1;
-                if memory {
-                    bonus_attempts[quizzer_index][8] += 1;
-                    bonus[quizzer_index][8] += 1;
-                }
-                //Add bonus of 10 to team score. Make sure the quizzer is considered active.
-                if let Some(team) = teams.get_mut(team_number) {
-                    team.team_score += 10;
-                    if verbose {
-                        eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a bonus right. Added 10 points to team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
+                "'BC'" => {//Quizzer answered a bonus question correctly.
+                    bonus_attempts[quizzer_index][question_type_index] += 1;
+                    bonus[quizzer_index][question_type_index] += 1;
+                    if memory {
+                        bonus_attempts[quizzer_index][8] += 1;
+                        bonus[quizzer_index][8] += 1;
                     }
-                } else {
-                    if teams.len() <= team_number {
-                        teams.push(TeamStat {
-                            team_name: quizzer_name.to_string(),
-                            team_score: 0,
-                            active_quizzers: Vec::new(),
-                        });
-                    } else {
-                        teams[team_number] = TeamStat {
-                            team_name: quizzer_name.to_string(),
-                            team_score: 0,
-                            active_quizzers: Vec::new(),
-                        };
-                    }
-                    warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
-                }
-                //If quizzer not in active list, add them.
-                if !teams.iter().any(|t| t.active_quizzers.iter().any(|q| q.0 == *quizzer_name)) {
+                    //Add bonus of 10 to team score. Make sure the quizzer is considered active.
                     if let Some(team) = teams.get_mut(team_number) {
-                        team.active_quizzers.push((quizzer_name.to_string(), 0, 0));
+                        team.team_score += 10;
+                        if verbose {
+                            eprintln!("[Team Scoring] Rm: {} Rd: {} Q: {} Quizzer {} got a bonus right. Added 10 points to team {}.", room_number, round_number, question_number + 1, quizzer_name, team.team_name);
+                        }
+                    } else {
+                        if teams.len() <= team_number {
+                            teams.push(TeamStat {
+                                team_name: quizzer_name.to_string(),
+                                team_score: 0,
+                                active_quizzers: Vec::new(),
+                            });
+                        } else {
+                            teams[team_number] = TeamStat {
+                                team_name: quizzer_name.to_string(),
+                                team_score: 0,
+                                active_quizzers: Vec::new(),
+                            };
+                        }
+                        warns.push(format!("Warning: Team number {} added mid-round in room {} round {}. This should not happen.", team_number, room_number, round_number));
+                    }
+                    //If quizzer not in active list, add them.
+                    if !teams.iter().any(|t| t.active_quizzers.iter().any(|q| q.0 == *quizzer_name)) {
+                        if let Some(team) = teams.get_mut(team_number) {
+                            team.active_quizzers.push((quizzer_name.to_string(), 0, 0));
+                        }
                     }
                 }
-            }
-            "'BE'" => {//Quizzer answered a bonus question incorrectly.
-                bonus_attempts[quizzer_index][question_type_index] += 1;
-                if memory {
-                    bonus_attempts[quizzer_index][8] += 1;
+                "'BE'" => {//Quizzer answered a bonus question incorrectly.
+                    bonus_attempts[quizzer_index][question_type_index] += 1;
+                    if memory {
+                        bonus_attempts[quizzer_index][8] += 1;
+                    }
+                    //This does nothing to team scoring. Move along.
                 }
-                //This does nothing to team scoring. Move along.
-            }
-            "'TN'" => {//Team name. Use team name to see if it's already listed. If not, add it.
-                if teams.len() <= team_number {
-                    teams.push(TeamStat {
-                        team_name: quizzer_name.to_string(),
-                        team_score: 0,
-                        active_quizzers: Vec::new(),
-                    });
-                } else {
-                    teams[team_number] = TeamStat {
-                        team_name: quizzer_name.to_string(),
-                        team_score: 0,
-                        active_quizzers: Vec::new(),
-                    };
+                "'TN'" => {//Team name. Use team name to see if it's already listed. If not, add it.
+                    if teams.len() <= team_number {
+                        teams.push(TeamStat {
+                            team_name: quizzer_name.to_string(),
+                            team_score: 0,
+                            active_quizzers: Vec::new(),
+                        });
+                    } else {
+                        teams[team_number] = TeamStat {
+                            team_name: quizzer_name.to_string(),
+                            team_score: 0,
+                            active_quizzers: Vec::new(),
+                        };
+                    }
                 }
+                _ => {}
             }
-            _ => {}
-        }
-        if verbose {
-            //print state of current round for debugging.
-            //round number, room number, question number, teams, scores.
-            eprintln!("Current Round: {} Room: {} Question: {} Current Teams: {:?} Current Scores: {:?}", round_number, room_number, question_number + 1, 
-                teams.iter().map(|t| t.team_name.clone()).collect::<Vec<String>>(), teams.iter().map(|t| t.team_score).collect::<Vec<u32>>());
+            if verbose {
+                //print state of current round for debugging.
+                //round number, room number, question number, teams, scores.
+                eprintln!("Current Round: {} Room: {} Question: {} Current Teams: {:?} Current Scores: {:?}", round_number, room_number, question_number + 1, 
+                    teams.iter().map(|t| t.team_name.clone()).collect::<Vec<String>>(), teams.iter().map(|t| t.team_score).collect::<Vec<u32>>());
+            }
         }
     }
+    
     if missing.len() > 0 {
         //eprintln!("Warning: Some records were skipped due to missing question sets");
         warns.push("Warning: Some records were skipped due to missing question sets".to_string());
@@ -606,16 +607,19 @@ fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String
     result
 }
 
-fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut Vec<String>) -> (Vec<String>, Vec<String>, Vec<csv::StringRecord>) {
+struct RecordCollection {
+    pub teams: Vec<(String, Vec<String>)>,
+    pub records: Vec<csv::StringRecord>
+}
+
+fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut Vec<String>) -> (Vec<String>, Vec<String>, Vec<RecordCollection>) {
     let mut current_team = String::new();
-    let mut round_quizzers: Vec<String> = Vec::new();
-    let mut round_teams: Vec<String> = Vec::new();
+    let mut round_teams: Vec<(String, Vec<String>)> = Vec::new();
     let mut confirmed_quizzers: Vec<String> = Vec::new();
     let mut confirmed_teams: Vec<String> = Vec::new();
     let mut action = false;
-    let mut index = 0;
 
-    let mut confirmed_records: Vec<csv::StringRecord> = Vec::new();
+    let mut confirmed_records: Vec<RecordCollection> = Vec::new();
     let mut candidate_records: Vec<csv::StringRecord> = Vec::new();
 
     for record in records {
@@ -631,41 +635,42 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
         let columns: Vec<&str> = record.into_iter().collect();
         let ecode = columns.get(10).unwrap_or(&"");//if this is "TN", it's a team name. If it's "QN", it's a quizzer name.
         let name = columns.get(7).unwrap_or(&"").to_string();//The name of either a quizzer or a team, depending on the event code.
-        let team_number = columns.get(9).unwrap_or(&"").to_string();//team number from the current record. This gets reset to 0 at the start of each round.
+        let team_number_str = columns.get(9).unwrap_or(&"").to_string();
+        let team_number_string = team_number_str.trim_matches('\'');//team number from the current record. This gets reset to 0 at the start of each round.
+        let team_number: usize = team_number_string.parse().unwrap_or(0);
         //If team_number becomes 0 before any action takes place, it means the names in round_teams might be from a practice session and can't be confirmed.
         if ecode == &"'TN'" {//team name. Check if they're already in the map, and add them if not.
-            if team_number == "0" {//this is a new round.
-                 if check_valid_round(&mut round_teams, &mut round_quizzers, &mut confirmed_teams, &mut confirmed_quizzers, verbose, &mut action) {
-                    //Copy candidate records to verified records
-                    confirmed_records.append(&mut candidate_records);
-                 }
-                candidate_records.clear();
+            //Insert at team_number, or replace current team_number if currently taken.
+            if round_teams.len() > team_number {
+                round_teams[team_number].0 = name.clone();
             } else {
-                if action {
-                    //This shouldn't ever happen. But I've seen it happen. I'm honeslty not sure what should happen in this situation.
-                    //So I figure we'll just run as normal, and give a warning.
-                    warns.push(format!("Warning: Team  '{}' added mid-round at record #{}. This should not happen.", name, index));
+                while round_teams.len() < team_number {
+                    round_teams.push(("".to_string(), Vec::new()));
                 }
+                round_teams.push(("".to_string(), Vec::new()));
             }
             current_team = name.clone();
         } else if ecode == &"'QN'" {//quizzer name. Add to the team's list.
             if name != "''" && current_team != "''" {//if the name is not empty, add it to the list.
-                round_quizzers.push(name.clone());
-                round_teams.push(current_team.clone());
+                if !round_teams[team_number].1.contains(&name) {
+                    round_teams[team_number].1.push(name.clone());
+                    round_teams[team_number].0 = current_team.clone();
+                }
             }
         } else if ecode == &"'BC'" || ecode == &"'BE'" || ecode == &"'TC'" || ecode == &"'TE'" {//action has happened, teams present in this round can be confirmed.
             action = true;
         } else if ecode == &"'RM'" {//Indicates start of new round. Check if current teams can be confirmed.
-            if check_valid_round(&mut round_teams, &mut round_quizzers, &mut confirmed_teams, &mut confirmed_quizzers, verbose, &mut action) {
+            if check_valid_round(&mut round_teams, &mut confirmed_teams, &mut confirmed_quizzers, verbose, &mut action) {
+
+
                 //Copy candidate records to verified records
-                confirmed_records.append(&mut candidate_records);
+                //confirmed_records.push(RecordCollection);
             }
             candidate_records.clear();
+            round_teams.clear();
         }
 
         candidate_records.push(record.clone());
-
-        index += 1;//shouldn't be needed, but for debugging why not have it?
     }
 
     if verbose {
@@ -676,18 +681,22 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
     (confirmed_quizzers, confirmed_teams, confirmed_records)
 }
 
-fn check_valid_round(round_teams: &mut Vec<String>, round_quizzers: &mut Vec<String>, confirmed_teams: &mut Vec<String>, confirmed_quizzers: &mut Vec<String>, verbose: bool, action: &mut bool) -> bool {
+fn check_valid_round(round_teams: &mut Vec<(String, Vec<String>)>, confirmed_teams: &mut Vec<String>, confirmed_quizzers: &mut Vec<String>, verbose: bool, action: &mut bool) -> bool {
     let mut valid = false;
     if *action {
-        for i in 0..round_quizzers.len() {
-            if !confirmed_quizzers.contains(&round_quizzers[i]) {
-                confirmed_quizzers.push(round_quizzers[i].clone());
-                confirmed_teams.push(round_teams[i].clone());
+        for i in 0..round_teams.len() {
+            if !confirmed_teams.contains(&round_teams[i].0) {
+                confirmed_teams.push(round_teams[i].0.clone());
+            }
+            for j in 0..round_teams[i].1.len() {
+                if !confirmed_quizzers.contains(&round_teams[i].1[j]) {
+                    confirmed_quizzers.push(round_teams[i].1[j].clone());
+                }
             }
         }
+
         if verbose {
             eprintln!("Confirming Teams: {:?}", round_teams);
-            eprintln!("Confirming Quizzers: {:?}", round_quizzers);
         }
         valid = true;
     } else {
@@ -697,7 +706,6 @@ fn check_valid_round(round_teams: &mut Vec<String>, round_quizzers: &mut Vec<Str
     }
     *action = false;
     round_teams.clear();
-    round_quizzers.clear();
     valid
 }
 
@@ -775,16 +783,16 @@ fn read_csv_file(path: &str) -> Result<Vec<csv::StringRecord>, csv::Error> {
 }
 
 //Function to generate a unique hash for a team name
-fn hash_team_name(team: &str) -> u64 {
+fn hash_string(string: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
-    team.hash(&mut hasher);
+    string.hash(&mut hasher);
     hasher.finish()
 }
 
 //Function to generate a unique key for any pair of two teams regardless of order.
 fn generate_matchup_key(team_a: &str, team_b: &str) -> u64 {
-    let hash_a = hash_team_name(team_a);
-    let hash_b = hash_team_name(team_b);
+    let hash_a = hash_string(team_a);
+    let hash_b = hash_string(team_b);
     if hash_a < hash_b {
         hash_a * hash_b
     } else {
