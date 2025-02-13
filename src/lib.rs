@@ -371,10 +371,10 @@ fn update_arrays(warns: &mut Vec<String>, records: Vec<csv::StringRecord>, quizz
                         }
                     }
                     //Check if at least 3 quizzers on this team have a .1 (second element of tuple, the u32) greater than 0
-                    //AND that the current quizzer had a .1 over 1 (because this is their first correct question this round)
+                    //AND that the current quizzer had a .1 exactly 1 (because this is their first correct question this round)
                     if team.active_quizzers.iter().filter(|q| q.1 > 0).count() >= 3 {
                         if let Some(quizzer) = team.active_quizzers.iter_mut().find(|q| q.0 == *quizzer_name) {
-                            if quizzer.1 > 1 {
+                            if quizzer.1 == 1 {
                                 team.team_score += 10;//Apply 3rd or 4th person bonus.
                                 if verbose {
                                     eprintln!("[Team Scoring] 3rd/4th person bonus applied to team {}.", team.team_name);
