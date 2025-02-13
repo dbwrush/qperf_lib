@@ -599,7 +599,7 @@ fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String
 
     result.push_str(&format!("Name{}Placement{}Wins{}Losses{}Total Score\n", delim, delim, delim, delim));
     for ranking in rankings {
-        let team_name = ranking.0.trim_matches('"');
+        let team_name = ranking.0.trim_matches('\'');
         result.push_str(&format!("{}{}{}{}{}{}{}{}{}\n", team_name, delim, ranking.1, delim, ranking.2, delim, ranking.3, delim, ranking.4));
     }
 
