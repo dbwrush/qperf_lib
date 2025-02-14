@@ -621,7 +621,7 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
         */
 
         if verbose {
-            println!("{:?}", record)
+            eprintln!("{:?}", record)
         }
 
         // Split the record by commas to get the columns
@@ -644,7 +644,7 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
             }
             round_teams[team_number] = (name.clone(), Vec::new());
             if verbose {
-                println!("Set team number {} to {}", team_number, name);
+                eprintln!("Set team number {} to {}", team_number, name);
             }
         } else if ecode == &"'QN'" {//quizzer name. Add to the team's list.
             if round_teams.len() <= team_number {
@@ -659,18 +659,18 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
             }
             round_teams[team_number].1[seat_number] = name.clone();
             if verbose {
-                println!("Set seat number {} to {} for {}", seat_number, name, round_teams[team_number].0);
-                print!("Current lineup: ");
+                eprintln!("Set seat number {} to {} for {}", seat_number, name, round_teams[team_number].0);
+                eprint!("Current lineup: ");
                 for team in &round_teams {
-                    print!("{} {:?} ", team.0, team.1);
+                    eprint!("{} {:?} ", team.0, team.1);
                 }
-                println!();
+                eprintln!();
             }
         } else if ecode == &"'BC'" || ecode == &"'BE'" || ecode == &"'TC'" || ecode == &"'TE'" {//action has happened, teams present in this round can be confirmed.
             action = true;
             candidate_records.push(record.clone());
             if verbose {
-                println!("Action happened during this round. It's probably not junk data.");
+                eprintln!("Action happened during this round. It's probably not junk data.");
             }
 
             //Combine columns 3 and 4 for a unique round number.
@@ -700,7 +700,7 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
                     for tn in round_teams.clone() {
                         team_names.push(tn.0);
                     }
-                    println!("Confirming round {} with teams {:?} and {} records", match_string, round_teams, candidate_records.len());
+                    eprintln!("Confirming round {} with teams {:?} and {} records", match_string, round_teams, candidate_records.len());
                 }
             }
             candidate_records.clear();
@@ -717,7 +717,7 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
     }
     //check last round
     if verbose {
-        println!("Checking last round, {} records remaining", candidate_records.len());
+        eprintln!("Checking last round, {} records remaining", candidate_records.len());
     }
     if check_valid_round(&mut round_teams, &mut confirmed_teams, &mut confirmed_quizzers, verbose, &mut action) {
         let round = RecordCollection {
@@ -736,7 +736,7 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
             for tn in round_teams.clone() {
                 team_names.push(tn.0);
             }
-            println!("Confirming round {} with teams {:?} and {} records", match_string, round_teams, candidate_records.len());
+            eprintln!("Confirming round {} with teams {:?} and {} records", match_string, round_teams, candidate_records.len());
         }
     }
 
