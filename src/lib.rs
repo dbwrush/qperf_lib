@@ -159,7 +159,13 @@ fn get_records(data_paths: Vec<PathBuf>, verbose: bool, tourn: String, warns: &m
         }
     }
 
-    let filtered_records = filter_records(quiz_records, tourn);
+    let count_records = quiz_records.len();
+
+    let filtered_records = filter_records(quiz_records, tourn.clone());
+
+    if filtered_records.len() == 0 && count_records > 0 {
+        warns.push(format!("Warning: No records found for tournament {}", tourn));
+    }
     if verbose {
         eprintln!("Found {} records", filtered_records.len());
     }
@@ -689,7 +695,7 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
                 }
 
                 confirmed_records.insert(match_string.clone(), round);
-                if true {//meant to be verbose
+                if verbose {//meant to be verbose
                     let mut team_names:Vec<String> = Vec::new();
                     for tn in round_teams.clone() {
                         team_names.push(tn.0);
@@ -725,7 +731,7 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
             confirmed_records.remove(&match_string);
         }
         confirmed_records.insert(match_string.clone(), round);
-        if true {
+        if verbose {
             let mut team_names:Vec<String> = Vec::new();
             for tn in round_teams.clone() {
                 team_names.push(tn.0);
