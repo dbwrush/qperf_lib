@@ -20,7 +20,7 @@ pub struct Round {
     pub round_number: String,
     pub room_number : String,
     pub team_names  : Vec<String>,
-    pub team_scores : Vec<u32>,
+    pub team_scores : Vec<i32>,
 }
 
 pub fn get_question_types() -> Vec<char> {
@@ -224,7 +224,7 @@ fn update_arrays(warns: &mut Vec<String>, records: HashMap<String, RecordCollect
 
     struct TeamStat {
         team_name: String,
-        team_score: u32,
+        team_score: i32,
         active_quizzers: Vec<(String, u32, u32)>,//used to track when quizzers earn a team bonus or point deduction
         //String: quizzer name, u32: count questions (NOT BONUSES) correct, u32: count questions (NOT BONUESES) incorrect.
 
@@ -490,7 +490,7 @@ fn update_arrays(warns: &mut Vec<String>, records: HashMap<String, RecordCollect
                 //print state of current round for debugging.
                 //round number, room number, question number, teams, scores.
                 eprintln!("Current Round: {} Room: {} Question: {} Current Teams: {:?} Current Scores: {:?}", round.room_number, round.round_number, question_number + 1, 
-                    teams.iter().map(|t| t.team_name.clone()).collect::<Vec<String>>(), teams.iter().map(|t| t.team_score).collect::<Vec<u32>>());
+                    teams.iter().map(|t| t.team_name.clone()).collect::<Vec<String>>(), teams.iter().map(|t| t.team_score).collect::<Vec<i32>>());
             }
         }
 
@@ -514,7 +514,7 @@ fn update_arrays(warns: &mut Vec<String>, records: HashMap<String, RecordCollect
     }
 }
 
-fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String, verbose: bool, display_rounds: bool) -> String {
+fn build_team_results(_warns: &mut Vec<String>, rounds: Vec<Round>, delim: String, verbose: bool, display_rounds: bool) -> String {
     let mut result = String::new();
 
     if verbose {
@@ -581,6 +581,9 @@ fn build_team_results(warns: &mut Vec<String>, rounds: Vec<Round>, delim: String
     let rankings = rank_teams(rounds);
 
     result.push_str("Team Results\n\n");
+
+    //Display brief explanation of how teams are ranked.
+    result.push_str("Teams are ranked first by number of losses, then by number of wins, then by head-to-head record. \n\n");
 
     result.push_str(&format!("Name{}Placement{}Wins{}Losses{}Total Score\n", delim, delim, delim, delim));
     for ranking in rankings {
@@ -877,11 +880,11 @@ fn generate_matchup_key(team_a: &str, team_b: &str) -> (u64, String) {//pass bac
     }
 }
 
-pub fn rank_teams(rounds: Vec<Round>) -> Vec<(String, u32, u32, u32, u32)> {
+pub fn rank_teams(rounds: Vec<Round>) -> Vec<(String, u32, u32, u32, i32)> {
     let mut wins: HashMap<String, u32> = HashMap::new();
     let mut losses: HashMap<String, u32> = HashMap::new();
-    let mut total_scores: HashMap<String, u32> = HashMap::new();
-    let mut head_to_head: HashMap<u64, (u32, u32)> = HashMap::new(); // Uses unique key for matchups
+    let mut total_scores: HashMap<String, i32> = HashMap::new();
+    let mut head_to_head: HashMap<u64, (i32, i32)> = HashMap::new(); // Uses unique key for matchups
     
     let mut teams: HashSet<String> = HashSet::new();
     
@@ -900,7 +903,7 @@ pub fn rank_teams(rounds: Vec<Round>) -> Vec<(String, u32, u32, u32, u32)> {
     
     // Process match results
     for round in &rounds {
-        let mut scored_teams: Vec<(String, u32)> = round
+        let mut scored_teams: Vec<(String, i32)> = round
             .team_names.iter()
             .cloned()
             .zip(round.team_scores.iter().cloned())
@@ -913,18 +916,16 @@ pub fn rank_teams(rounds: Vec<Round>) -> Vec<(String, u32, u32, u32, u32)> {
         
         // Sort teams by score in descending order
         scored_teams.sort_by(|a, b| b.1.cmp(&a.1));
-        
-        let winner = &scored_teams[0].0;
         //Add wins and losses for each team. 1 win for each team that scored less than the current team, 1 loss for each team that scored more.
-        let mut index = 0;
-        for (team, score) in scored_teams.iter().skip(1) {//skip the first team, since they're the winner.
-            index += 1;
-            //Number of losses is the team's index in the sorted list of teams. (0-indexed) First team has zero losses, second team has 1 loss, third team has two losses, etc.
-            *losses.get_mut(team).unwrap() += index;
-            *wins.get_mut(winner).unwrap() += 1;
-
-            //update total_score
-            *total_scores.get_mut(team).unwrap() += score;
+        for (team, score) in scored_teams.iter() {//skip the first team, since they're the winner.
+            for (_other_team, other_score) in scored_teams.iter() {
+                if score > other_score {
+                    *wins.get_mut(team).unwrap() += 1;
+                } else if score < other_score {//ties are not counted as wins or losses.
+                    *losses.get_mut(team).unwrap() += 1;
+                }
+                //No need to skip self, since the score will always be equal.
+            }
         }
 
         //Check if this is a two-team round or a three-team round. This will affect how we handle head-to-head scoring.
@@ -941,7 +942,7 @@ pub fn rank_teams(rounds: Vec<Round>) -> Vec<(String, u32, u32, u32, u32)> {
     }
     
     // Convert to a sortable vector
-    let mut ranking: Vec<(String, u32, u32, u32, u32)> = teams.into_iter()
+    let mut ranking: Vec<(String, u32, u32, u32, i32)> = teams.into_iter()
         .map(|team| (team.clone(), 0, wins[&team], losses[&team], total_scores[&team]))
         .collect();
     
@@ -980,7 +981,7 @@ pub fn rank_teams(rounds: Vec<Round>) -> Vec<(String, u32, u32, u32, u32)> {
     ranking
 }
 
-fn handle_matchup(head_to_head: &mut HashMap<u64, (u32, u32)>, team_a: &str, team_b: &str, score_a: u32, score_b: u32) {
+fn handle_matchup(head_to_head: &mut HashMap<u64, (i32, i32)>, team_a: &str, team_b: &str, score_a: i32, score_b: i32) {
     let (key, lower_hash) = generate_matchup_key(team_a, team_b);
     //ordering in the tuple is dependent on the hash of team names, NOT the score! This is to ensure consistent ordering if the teams have multiple head-to-head matchups with each other.
     //Whichever team matches lower_hash is the team that will be listed first in the tuple.
