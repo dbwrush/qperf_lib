@@ -636,45 +636,8 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
         let seat_number_str = columns.get(9).unwrap_or(&"").to_string();
         let seat_number_string = seat_number_str.trim_end_matches('\'');
         let seat_number: usize = seat_number_string.parse().unwrap_or(0);
-        //If team_number becomes 0 before any action takes place, it means the names in round_teams might be from a practice session and can't be confirmed.
-        if ecode == &"'TN'" {//team name. Check if they're already in the map, and add them if not.
-            //Insert at team_number, or replace current team_number if currently taken.
-            while round_teams.len() <= team_number {
-                round_teams.push(("".to_string(), Vec::new()));
-            }
-            round_teams[team_number] = (name.clone(), Vec::new());
-            if verbose {
-                eprintln!("Set team number {} to {}", team_number, name);
-            }
-        } else if ecode == &"'QN'" {//quizzer name. Add to the team's list.
-            if round_teams.len() <= team_number {
-                while round_teams.len() <= team_number {
-                    round_teams.push(("".to_string(), Vec::new()));
-                }
-                round_teams[team_number] = ("".to_string(), Vec::new());
-            }
-
-            while round_teams[team_number].1.len() <= seat_number {
-                round_teams[team_number].1.push("".to_string());
-            }
-            round_teams[team_number].1[seat_number] = name.clone();
-            if verbose {
-                eprintln!("Set seat number {} to {} for {}", seat_number, name, round_teams[team_number].0);
-                eprint!("Current lineup: ");
-                for team in &round_teams {
-                    eprint!("{} {:?} ", team.0, team.1);
-                }
-                eprintln!();
-            }
-        } else if ecode == &"'BC'" || ecode == &"'BE'" || ecode == &"'TC'" || ecode == &"'TE'" {//action has happened, teams present in this round can be confirmed.
-            action = true;
-            candidate_records.push(record.clone());
-            if verbose {
-                eprintln!("Action happened during this round. It's probably not junk data.");
-            }
-
-            //Combine columns 3 and 4 for a unique round number.
-        } else if ecode == &"'RM'" {//Indicates start of new round. Check if current teams can be confirmed.
+        
+        if check_new_round(&round_string, &room_string, &columns) {//Indicates start of new round. Check if current teams can be confirmed.
             if check_valid_round(&mut round_teams, &mut confirmed_teams, &mut confirmed_quizzers, verbose, &mut action) {
                 //remove teams with no name.
                 round_teams.retain(|t| t.0 != "''" && t.0 != "");
@@ -714,6 +677,45 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
             room_string = columns.get(3).unwrap_or(&"").to_string();
             round_string = columns.get(4).unwrap_or(&"").to_string();
         }
+        
+        if ecode == &"'TN'" {//team name. Check if they're already in the map, and add them if not.
+            //Insert at team_number, or replace current team_number if currently taken.
+            while round_teams.len() <= team_number {
+                round_teams.push(("".to_string(), Vec::new()));
+            }
+            round_teams[team_number] = (name.clone(), Vec::new());
+            if verbose {
+                eprintln!("Set team number {} to {}", team_number, name);
+            }
+        } else if ecode == &"'QN'" {//quizzer name. Add to the team's list.
+            if round_teams.len() <= team_number {
+                while round_teams.len() <= team_number {
+                    round_teams.push(("".to_string(), Vec::new()));
+                }
+                round_teams[team_number] = ("".to_string(), Vec::new());
+            }
+
+            while round_teams[team_number].1.len() <= seat_number {
+                round_teams[team_number].1.push("".to_string());
+            }
+            round_teams[team_number].1[seat_number] = name.clone();
+            if verbose {
+                eprintln!("Set seat number {} to {} for {}", seat_number, name, round_teams[team_number].0);
+                eprint!("Current lineup: ");
+                for team in &round_teams {
+                    eprint!("{} {:?} ", team.0, team.1);
+                }
+                eprintln!();
+            }
+        } else if ecode == &"'BC'" || ecode == &"'BE'" || ecode == &"'TC'" || ecode == &"'TE'" {//action has happened, teams present in this round can be confirmed.
+            action = true;
+            candidate_records.push(record.clone());
+            if verbose {
+                eprintln!("Action happened during this round. It's probably not junk data.");
+            }
+
+            //Combine columns 3 and 4 for a unique round number.
+        } 
     }
     //check last round
     if verbose {
@@ -746,6 +748,14 @@ fn get_quizzer_names(records: Vec<csv::StringRecord>, verbose: bool, warns: &mut
     }
 
     (confirmed_quizzers, confirmed_records)
+}
+
+fn check_new_round(round: &String, room: &String, columns: &Vec<&str>) -> bool {
+    let mut new_round = false;
+    if *round != columns.get(4).unwrap_or(&"").to_string() || *room != columns.get(3).unwrap_or(&"").to_string() {
+        new_round = true;
+    }
+    new_round
 }
 
 fn check_valid_round(round_teams: &mut Vec<(String, Vec<String>)>, confirmed_teams: &mut Vec<String>, confirmed_quizzers: &mut Vec<(String, String)>, verbose: bool, action: &mut bool) -> bool {
@@ -856,13 +866,14 @@ fn hash_string(string: &str) -> u64 {
 }
 
 //Function to generate a unique key for any pair of two teams regardless of order.
-fn generate_matchup_key(team_a: &str, team_b: &str) -> u64 {
+fn generate_matchup_key(team_a: &str, team_b: &str) -> (u64, String) {//pass back the name of the team with the lower hash for consistent 
     let hash_a = hash_string(team_a);
     let hash_b = hash_string(team_b);
+    let hash = hash_a * hash_b;
     if hash_a < hash_b {
-        hash_a * hash_b
+        (hash, team_a.to_string())
     } else {
-        hash_b * hash_a
+        (hash, team_b.to_string())
     }
 }
 
@@ -904,14 +915,28 @@ pub fn rank_teams(rounds: Vec<Round>) -> Vec<(String, u32, u32, u32, u32)> {
         scored_teams.sort_by(|a, b| b.1.cmp(&a.1));
         
         let winner = &scored_teams[0].0;
-        for (team, score) in scored_teams.iter().skip(1) {
-            *losses.get_mut(team).unwrap() += 1;
+        //Add wins and losses for each team. 1 win for each team that scored less than the current team, 1 loss for each team that scored more.
+        let mut index = 0;
+        for (team, score) in scored_teams.iter().skip(1) {//skip the first team, since they're the winner.
+            index += 1;
+            //Number of losses is the team's index in the sorted list of teams. (0-indexed) First team has zero losses, second team has 1 loss, third team has two losses, etc.
+            *losses.get_mut(team).unwrap() += index;
             *wins.get_mut(winner).unwrap() += 1;
-            
-            let key = generate_matchup_key(winner, team);
-            let entry = head_to_head.entry(key).or_insert((0, 0));
-            entry.0 += score; // Total points for the winner in this matchup
-            entry.1 += scored_teams.iter().find(|(t, _)| t == team).unwrap().1; // Total points for the losing team
+
+            //update total_score
+            *total_scores.get_mut(team).unwrap() += score;
+        }
+
+        //Check if this is a two-team round or a three-team round. This will affect how we handle head-to-head scoring.
+        if scored_teams.len() == 2 {
+            //In a two-team round, the two teams play each other. This is a head-to-head matchup.
+            handle_matchup(&mut head_to_head, &scored_teams[0].0, &scored_teams[1].0, scored_teams[0].1, scored_teams[1].1);
+        } else if scored_teams.len() == 3 {
+            //In a three-team round, each team plays the other two teams. That's effectively 3 different head-to-heads at the same time.
+            //To demonstrate: A vs B, A vs C, B vs C. Each of these matchups is treated as a separate head-to-head.
+            handle_matchup(&mut head_to_head, &scored_teams[0].0, &scored_teams[1].0, scored_teams[0].1, scored_teams[1].1);
+            handle_matchup(&mut head_to_head, &scored_teams[0].0, &scored_teams[2].0, scored_teams[0].1, scored_teams[2].1);
+            handle_matchup(&mut head_to_head, &scored_teams[1].0, &scored_teams[2].0, scored_teams[1].1, scored_teams[2].1);
         }
     }
     
@@ -932,9 +957,18 @@ pub fn rank_teams(rounds: Vec<Round>) -> Vec<(String, u32, u32, u32, u32)> {
             return win_cmp;
         }
         
-        let key = generate_matchup_key(&a.0, &b.0);
-        let head_to_head_a = head_to_head.get(&key).map(|(a_score, _)| *a_score).unwrap_or(0);
-        let head_to_head_b = head_to_head.get(&key).map(|(_, b_score)| *b_score).unwrap_or(0);
+        let (key, lower_hash) = generate_matchup_key(&a.0, &b.0);
+        //Ordering in the tuple is dependent on name hashing, not team score. Thus, team_a might actually be the second team in the tuple!
+        //This is to ensure consistent ordering if the teams have multiple head-to-head matchups with each other.
+        //Use lower_hash to determine which team is listed first in the tuple.
+        let (head_to_head_a, head_to_head_b);
+        if a.0 == lower_hash {//team a is the first team in the tuple.
+            head_to_head_a = head_to_head.get(&key).map(|(a, _)| *a).unwrap_or(0);
+            head_to_head_b = head_to_head.get(&key).map(|(_, b)| *b).unwrap_or(0);
+        } else {//team b is the first team in the tuple.
+            head_to_head_a = head_to_head.get(&key).map(|(_, a)| *a).unwrap_or(0);
+            head_to_head_b = head_to_head.get(&key).map(|(b, _)| *b).unwrap_or(0);
+        }
         head_to_head_b.cmp(&head_to_head_a)
     });
     
@@ -944,6 +978,20 @@ pub fn rank_teams(rounds: Vec<Round>) -> Vec<(String, u32, u32, u32, u32)> {
     }
     
     ranking
+}
+
+fn handle_matchup(head_to_head: &mut HashMap<u64, (u32, u32)>, team_a: &str, team_b: &str, score_a: u32, score_b: u32) {
+    let (key, lower_hash) = generate_matchup_key(team_a, team_b);
+    //ordering in the tuple is dependent on the hash of team names, NOT the score! This is to ensure consistent ordering if the teams have multiple head-to-head matchups with each other.
+    //Whichever team matches lower_hash is the team that will be listed first in the tuple.
+    let (a_score, b_score) = head_to_head.entry(key).or_insert((0, 0));
+    if lower_hash == team_a {
+        *a_score += score_a;
+        *b_score += score_b;
+    } else {
+        *a_score += score_b;
+        *b_score += score_a;
+    }
 }
 
 #[cfg(test)]
