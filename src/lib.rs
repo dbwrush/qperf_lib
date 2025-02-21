@@ -50,7 +50,7 @@ pub fn qperf(question_sets_path: &str, quiz_data_path: &str, verbose: bool, type
     }
 
     //map round number to question types
-    let question_types_by_round = get_question_types_by_round(set_paths, verbose);
+    let question_types_by_round = get_question_types_by_round(set_paths, verbose, &mut warns);
 
     //read quiz data file
     let (records, quizzer_names) = get_records(data_paths, verbose, tourn, &mut warns);
@@ -119,13 +119,13 @@ fn validate_and_build_paths(question_sets_path: &str, quiz_data_path: &str, verb
     Ok((set_paths, data_paths))
 }
 
-fn get_question_types_by_round(set_paths: Vec<PathBuf>, verbose: bool) -> HashMap<String, Vec<char>> {
+fn get_question_types_by_round(set_paths: Vec<PathBuf>, verbose: bool, warns: &mut Vec<String>) -> HashMap<String, Vec<char>> {
     let mut question_types_by_round: HashMap<String, Vec<char>> = HashMap::new();
     for entry in set_paths {
         if verbose {
             eprintln!("Found RTF file: {:?}", entry);
         }
-        let question_types = read_rtf_file(entry.to_str().unwrap());
+        let question_types = read_rtf_file(entry.to_str().unwrap(), warns);
         //iterate through the map from this file and add to the main map, checking for duplicate round numbers and giving warnings for them.
         for (round_number, question_types) in question_types.unwrap() {
             if question_types_by_round.contains_key(&round_number) {
@@ -278,12 +278,15 @@ fn update_arrays(warns: &mut Vec<String>, records: HashMap<String, RecordCollect
             let quizzer_index = quizzer_names.iter().position(|n| n.0 == *quizzer_name).unwrap_or(0);
 
             // Check if the round is in the question types map
+            let mut invalid_question_type = false;
             if !question_types.contains_key(&record_collection.round as &str) {
                 if !missing.contains(&round.round_number.to_string()) {
                     missing.push(round.round_number.to_string());
+                    warns.push(format!("Missing question set for round {}! Ignoring question types for this round.", round.round_number));
+                    invalid_question_type = true;
                 }
-                eprintln!("Warning: Skipping record due to missing question set for round {}", round.round_number);
-                continue;
+                /*eprintln!("Warning: Skipping record due to missing question set for round {}", round.round_number);
+                continue;*/
             }
             if verbose {
                 eprintln!("{:?}", record);
@@ -302,10 +305,11 @@ fn update_arrays(warns: &mut Vec<String>, records: HashMap<String, RecordCollect
             }
             // Get the question type based on question number
             let mut question_type = 'G';
-            if (question_number + 1) != 21 {
+            if invalid_question_type {
+                question_type = '/';
+            } else if question_types.contains_key(&record_collection.round as &str) && (question_number + 1) < question_types.get(&record_collection.round as &str).unwrap().len() {
                 question_type = question_types.get(&record_collection.round as &str).unwrap_or(&vec!['G'])[question_number];
             }
-            let question_type = question_type;
 
             //Q, R, and V all count towards a total for memory verses.
             let memory = question_type == 'Q' || question_type == 'R' || question_type == 'V';
@@ -810,7 +814,7 @@ fn filter_records(records: Vec<csv::StringRecord>, tourn: String) -> Vec<csv::St
     filtered_records
 }
 
-fn read_rtf_file(path: &str) -> io::Result<HashMap<String, Vec<char>>> {
+fn read_rtf_file(path: &str, warns: &mut Vec<String>) -> io::Result<HashMap<String, Vec<char>>> {
     let content = fs::read_to_string(path)?;
     let re = regex::Regex::new(r"SET #([A-Za-z0-9]+)").unwrap();
     //println!("RTF Content:\n{}", content);
@@ -842,6 +846,13 @@ fn read_rtf_file(path: &str) -> io::Result<HashMap<String, Vec<char>>> {
         }
     }
     question_types_by_round.insert(round_number, question_types.clone());
+
+    //Check if any of the rounds have a weird name, such as an empty string. This would indicate the RTF file is not formatted correctly.
+    for (round, _types) in &question_types_by_round {
+        if round == "''" {
+            warns.push("Warning: RTF question set file might have been formatted incorrectly. Please use only the original RTF files!".to_string());
+        }
+    }
 
     Ok(question_types_by_round)
 }
@@ -1003,7 +1014,7 @@ mod tests {
     #[test]
     fn test_read_rtf_file() {
         let sample_rtf_path = "tests/questions/sets.rtf"; // Ensure a sample file exists in `tests/`
-        let result = read_rtf_file(sample_rtf_path);
+        let result = read_rtf_file(sample_rtf_path, &mut Vec::new());
         assert!(result.is_ok());
         let questions = result.unwrap();
         assert!(questions.len() > 0); // Validate that questions were parsed
