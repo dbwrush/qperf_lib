@@ -282,7 +282,7 @@ fn update_arrays(warns: &mut Vec<String>, records: HashMap<String, RecordCollect
             if !question_types.contains_key(&record_collection.round as &str) {
                 if !missing.contains(&round.round_number.to_string()) {
                     missing.push(round.round_number.to_string());
-                    warns.push(format!("Missing question set for round {}! Ignoring question types for this round.", round.round_number));
+                    //warns.push(format!("Missing question set for round {}! Ignoring question types for this round.", round.round_number));
                     invalid_question_type = true;
                 }
                 /*eprintln!("Warning: Skipping record due to missing question set for round {}", round.round_number);
@@ -506,7 +506,7 @@ fn update_arrays(warns: &mut Vec<String>, records: HashMap<String, RecordCollect
     
     if missing.len() > 0 {
         //eprintln!("Warning: Some records were skipped due to missing question sets");
-        warns.push("Warning: Some records were skipped due to missing question sets".to_string());
+        warns.push("Warning: Some rounds are missing question sets! These questions will be treated as general!".to_string());
         //eprintln!("Skipped Rounds: {:?}", missing);
         warns.push(format!("Skipped Rounds: {:?}", missing));
         //Display the question set numbers found in the RTF files, sort them for easier reading.
@@ -514,7 +514,7 @@ fn update_arrays(warns: &mut Vec<String>, records: HashMap<String, RecordCollect
         found_rounds.sort();
         eprintln!("Found Question Sets: {:?}", found_rounds);
         //eprintln!("If your question sets are not named correctly, please rename them to match the round numbers in the quiz data file");
-        warns.push(format!("If your question sets are not named correctly, please rename them to match the round numbers in the quiz data file"));
+        warns.push(format!("Round names must match between QuizMachine and the question set files!"));
     }
 }
 
