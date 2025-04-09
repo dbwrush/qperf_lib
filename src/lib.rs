@@ -880,16 +880,18 @@ fn hash_string(string: &str) -> u64 {
 }
 
 //Function to generate a unique key for any pair of two teams regardless of order.
-fn generate_matchup_key(team_a: &str, team_b: &str) -> (u64, String) {//pass back the name of the team with the lower hash for consistent 
-    let hash_a = hash_string(team_a);
-    let hash_b = hash_string(team_b);
-    let hash = hash_a * hash_b;
-    if hash_a < hash_b {
-        (hash, team_a.to_string())
-    } else {
-        (hash, team_b.to_string())
-    }
+fn generate_matchup_key(team_a: &str, team_b: &str) -> (u64, String) {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut teams = [team_a, team_b];
+    teams.sort();
+    let mut hasher = DefaultHasher::new();
+    teams[0].hash(&mut hasher);
+    teams[1].hash(&mut hasher);
+    (hasher.finish(), teams[0].to_string())
 }
+
 
 pub fn rank_teams(rounds: Vec<Round>) -> Vec<(String, u32, u32, u32, i32)> {
     let mut wins: HashMap<String, u32> = HashMap::new();
